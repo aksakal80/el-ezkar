@@ -68,7 +68,7 @@ symEth = input.symbol("BINANCE:ETHUSDT.P", "ETH sembolü", group=g1)
 wBtc   = input.float(0.70, "BTC ağırlığı (kalanı ETH)", minval=0.0, maxval=1.0, step=0.05, group=g1,
          tooltip="Majör sepeti = ağırlık × BTC + (1 − ağırlık) × ETH (3. majör açıksa onun payı orantılı düşülür). Piyasa yönü her ölçütte bu sepetten okunur.")
 sym3   = input.symbol("BINANCE:SOLUSDT.P", "3. majör", inline="m3", group=g1)
-w3     = input.float(0.0, "payı", minval=0.0, maxval=0.5, step=0.05, inline="m3", group=g1,
+wMaj3     = input.float(0.0, "payı", minval=0.0, maxval=0.5, step=0.05, inline="m3", group=g1,
          tooltip="0 = kapalı. SOL, BNB, XRP gibi bir majörü sepete katmak için 0,10–0,20 verin.")
 symOth = input.symbol("CRYPTOCAP:OTHERS", "Altcoin grubu (OTHERS)", group=g1,
          tooltip="OTHERS = piyasa değerine göre ilk 10 dışındaki tüm coinler. Coinlerinizin grubunun durumu bundan okunur.")
@@ -134,7 +134,7 @@ benchAd = md2F ? "BTC+OTHERS" : mdOth ? "OTHERS" : "Majörler"
 [btc, vBtc] = request.security(symBtc, timeframe.period, [close, volume], barmerge.gaps_off, barmerge.lookahead_off)
 eth         = request.security(symEth, timeframe.period, close,           barmerge.gaps_off, barmerge.lookahead_off)
 oth         = request.security(symOth, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
-maj3        = w3 > 0 ? request.security(sym3, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off) : float(na)
+maj3        = wMaj3 > 0 ? request.security(sym3, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off) : float(na)
 
 // Dominanslar yalnızca rejim açıkken istenir (ETH.D oy vermese de bilgi için alınır)
 dUsdt = useDom and rj_stb ? request.security(symDom,  timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off) : float(na)
@@ -150,7 +150,7 @@ rc    = lr(close)
 rB    = lr(btc)
 rE    = lr(eth)
 rO_ham = lr(oth)
-rMaj  = (1.0 - w3) * (wBtc * rB + (1.0 - wBtc) * rE) + w3 * lr(maj3)    // majör sepeti = piyasa yönü
+rMaj  = (1.0 - wMaj3) * (wBtc * rB + (1.0 - wBtc) * rE) + wMaj3 * lr(maj3)    // majör sepeti = piyasa yönü
 
 // ── Piyasa modeli (kayan kovaryans; her barda hesaplanır — CW10002)
 // 2 faktörde çok değişkenli EKK kullanılır: coin = b1·BTC + b2·OTHERS + artık.
@@ -242,8 +242,8 @@ zMax = ta.highest(math.abs(z), lenB)
 // böylece USDT.D'nin 0,1 puanlık hareketi ile BTC.D'nin 0,5 puanlığı kıyaslanabilir.
 // _sic = true olan barın değişimi 0 sayılır (OTHERS.D'deki ilk-10 sıçramaları için).
 f_dz(float _x, bool _sic) =>
-    float d1  = na(_x) or na(_x[1]) or _x[1] <= 0 or _sic ? 0.0 : math.log(_x / _x[1])
-    float ch  = math.sum(d1, lenDom)
+    float adim = na(_x) or na(_x[1]) or _x[1] <= 0 or _sic ? 0.0 : math.log(_x / _x[1])
+    float ch  = math.sum(adim, lenDom)
     float sdv = ta.stdev(ch, lenB)
     na(_x) or na(sdv) or sdv <= 0 ? float(na) : ch / sdv
 
@@ -1841,7 +1841,8 @@ dio_chg   = (close - close[dio_dir]) / close[dio_dir]
 dio_spike = ta.crossover(dio_osc, dio_upper)
 dio_panic = dio_on and dio_spike and dio_chg < 0
 dio_euph  = dio_on and dio_spike and dio_chg >= 0
-dio_quiet = dio_on and ta.crossunder(dio_osc, dio_lower)
+dio_xAlt  = ta.crossunder(dio_osc, dio_lower)     // her barda hesaplanır (CW10002)
+dio_quiet = dio_on and dio_xAlt
 
 // ── Alt panel: AYRIŞMA paneline bindirme (yeni panel YOK)
 dio_pane = dio_on and dio_mod == "Ayrışma paneline bindir" and not sade
@@ -2000,7 +2001,7 @@ if sig_alertOn and (sigBuy or sigSell)
 //               aynı durumdaysa "bütün altlar", farklıysa "yalnız bu coin" yazılır.
 // Bu birleşim 9 durumdan birini verir; satır her barda güncellenir.
 uy_rMkt = rMaj                                     // piyasa yönü = majör sepeti (BTC + ETH [+ 3. majör])
-uy_ad   = w3 > 0 ? "Majörler" : "BTC+ETH"
+uy_ad   = wMaj3 > 0 ? "Majörler" : "BTC+ETH"
 var float uy_bir = 0.0
 uy_bir := uy_bir * phi + uy_rMkt
 uy_cum  = sonumlu ? uy_bir : math.sum(uy_rMkt, lenA)
