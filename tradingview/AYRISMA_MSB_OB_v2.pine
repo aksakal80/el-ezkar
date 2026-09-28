@@ -2167,7 +2167,7 @@ if barstate.islast
 
         // ── Uyarılar ──
         if str.contains(symBtc, ":" + syminfo.ticker)
-            db_satir(t, r, "⚠ Uyarı", "Grafik = BTC → ayrışma ≈ 0 (anlamsız)", color.orange, color(na))
+            db_satir(t, r, "⚠ Uyarı", "Grafik BTC → σ, BTC'nin ETH'ye göre gücünü gösterir", color.orange, color(na))
             r += 1
         if sk_n == 0
             db_satir(t, r, "⚠ Uyarı", "Hiç sinyal bileşeni açık değil", color.orange, color(na))
