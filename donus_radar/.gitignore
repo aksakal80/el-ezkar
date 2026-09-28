@@ -1,0 +1,7 @@
+__pycache__/
+*.db
+*.db-wal
+*.db-shm
+.kaynak_bekle.json
+*.tmp
+.donus_radar.lock

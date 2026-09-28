@@ -1,0 +1,17 @@
+[Unit]
+Description=Dönüş Radarı - zirve/dip dönüş taraması (tek geçiş)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/root/sinyal/donus_radar
+ExecStart=/root/sinyal/venv/bin/python3 /root/sinyal/donus_radar/donus_radar.py
+Nice=10
+TimeoutStartSec=45min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=false
+ProtectHome=false

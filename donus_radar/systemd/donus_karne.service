@@ -1,0 +1,15 @@
+[Unit]
+Description=Dönüş Radarı - gece karnesi (geriye dönük test, ağ yok)
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/root/sinyal/donus_radar
+ExecStart=/root/sinyal/venv/bin/python3 /root/sinyal/donus_radar/donus_karne.py
+Nice=15
+TimeoutStartSec=60min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=false
+ProtectHome=false

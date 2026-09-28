@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dönüş Radarı</title>
+<script>try{if(localStorage.getItem("radar_theme")==="dark")document.documentElement.classList.add("dark");}catch(e){}</script>
+<style>
+:root{--bg:#f7f9fc;--kart:#ffffff;--bd:#d3dbe4;--yz:#1f2733;--sol:#5c6875;--vur:#2f6fed;--dip:#c8342f;--tav:#0e8a4f;--uyari:#b8860b;--alt:#eef2f6;--baslik:#6c5516;--altin:#f6ecd0}
+.dark{--bg:#11161d;--kart:#161b22;--bd:#31404f;--yz:#c3cedb;--sol:#8794a3;--vur:#549ee8;--dip:#e2706b;--tav:#3fb27a;--uyari:#d9b14c;--alt:#1c2128;--baslik:#e5c97d;--altin:#3a3220}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--yz);font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;margin:0;padding:14px 18px 40px}
+a{color:var(--vur);text-decoration:none}
+.ust{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:.85rem}
+.ust .bosluk{flex:1}
+.ust button{background:var(--alt);color:var(--yz);border:1px solid var(--bd);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.95rem}
+h1{font-size:1.2rem;color:var(--baslik);margin:12px 0 2px}
+.altbaslik{color:var(--sol);font-size:.84rem;margin:0 0 12px;line-height:1.5}
+.kart{background:var(--kart);border:1px solid var(--bd);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.sekmeler{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.btn{background:var(--alt);color:var(--yz);border:1px solid var(--bd);border-radius:8px;padding:7px 12px;font-size:.88rem;cursor:pointer;font-family:inherit}
+.btn.aktif{background:var(--vur);border-color:var(--vur);color:#fff}
+.btn.zirve.aktif{background:var(--dip);border-color:var(--dip)}
+.btn.dip.aktif{background:var(--tav);border-color:var(--tav)}
+.suzgec{display:flex;gap:10px 18px;flex-wrap:wrap;align-items:center;font-size:.84rem;color:var(--sol);margin-bottom:10px}
+.suzgec .grup{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.suzgec .btn{padding:4px 10px;font-size:.82rem}
+.suzgec input[type=text]{width:140px;background:var(--kart);color:var(--yz);border:1px solid var(--bd);border-radius:8px;padding:5px 9px;font-size:.84rem;text-transform:uppercase}
+.suzgec input[type=range]{width:120px;accent-color:var(--vur)}
+.tabloKutu{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.84rem}
+th{color:var(--sol);font-weight:500;text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd);white-space:nowrap;cursor:pointer;user-select:none}
+th.sirali::after{content:" ▾"}
+td{padding:6px 8px;border-bottom:1px solid var(--alt);vertical-align:top;font-variant-numeric:tabular-nums}
+tr.satir{cursor:pointer}
+tr.satir:hover td{background:var(--alt)}
+tr.acik td{background:color-mix(in srgb,var(--vur) 8%,var(--kart))}
+.coin{font-weight:700;white-space:nowrap}
+.coin small{font-weight:400;color:var(--sol)}
+.asama{display:inline-block;border-radius:6px;padding:1px 7px;font-weight:600;font-size:.78rem;white-space:nowrap}
+.a-TETIK{background:color-mix(in srgb,var(--uyari) 22%,transparent);color:var(--uyari)}
+.a-IZLE{background:var(--alt);color:var(--sol)}
+.skor{display:flex;align-items:center;gap:6px;min-width:92px}
+.skor .cubuk{flex:1;height:6px;border-radius:3px;background:var(--alt);overflow:hidden;min-width:40px}
+.skor .cubuk i{display:block;height:100%;background:var(--vur)}
+.skor b{min-width:28px;text-align:right}
+.etiket{display:inline-block;background:var(--alt);border-radius:5px;padding:0 6px;margin:1px 2px 1px 0;font-size:.74rem;color:var(--yz);white-space:nowrap}
+.kucuk{font-size:.76rem;color:var(--sol)}
+.art{color:var(--tav);font-weight:600}.eks{color:var(--dip);font-weight:600}
+.gec{white-space:nowrap}
+.detay td{background:var(--alt);padding:10px 12px}
+.bilesen{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 16px;margin:6px 0 8px}
+.bilesen div{display:flex;align-items:center;gap:6px;font-size:.8rem}
+.bilesen span.ad{flex:0 0 130px;color:var(--sol)}
+.bilesen .cubuk{flex:1;height:6px;border-radius:3px;background:var(--kart);overflow:hidden}
+.bilesen .cubuk i{display:block;height:100%;background:var(--uyari)}
+.bilesen .yok{color:var(--sol);font-size:.74rem}
+.bos{color:var(--sol);padding:18px 4px;text-align:center}
+.not{font-size:.84rem;line-height:1.6;color:var(--sol)}
+.not b{color:var(--yz)}
+details.acikla summary{cursor:pointer;font-weight:600;color:var(--yz)}
+.karneIc{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px}
+.karneIc h3{margin:0 0 6px;font-size:.95rem}
+.karneIc table{font-size:.8rem}
+.karneIc td,.karneIc th{padding:3px 6px}
+.iyi{color:var(--tav);font-weight:600}.kotu{color:var(--dip);font-weight:600}
+.meta{color:var(--sol);font-size:.76rem;margin-top:10px;line-height:1.6}
+.uyari{font-style:italic;color:var(--sol);font-size:.8rem;margin-top:10px}
+.bulgu{background:color-mix(in srgb,var(--uyari) 12%,var(--kart));border:1px solid color-mix(in srgb,var(--uyari) 40%,var(--bd));border-radius:10px;padding:9px 12px;font-size:.84rem;line-height:1.55;margin:0 0 12px}
+.tut{display:flex;align-items:center;gap:6px;min-width:96px}
+.tut .cubuk{flex:1;height:6px;border-radius:3px;background:var(--alt);overflow:hidden;min-width:40px}
+.tut .cubuk i{display:block;height:100%;background:var(--tav)}
+.tut b{min-width:30px;text-align:right}
+@media (max-width:760px){
+  body{padding:10px 10px 30px}
+  table.ana thead{display:none}
+  table.ana tr.satir{display:grid;grid-template-columns:1fr auto;gap:2px 10px;border-bottom:1px solid var(--bd);padding:8px 2px}
+  table.ana tr.satir td{border:0;padding:1px 2px}
+  table.ana tr.satir td[data-m]::before{content:attr(data-m) ": ";color:var(--sol);font-size:.74rem}
+  table.ana tr.satir td.gizle-m{display:none}
+  table.ana tr.detay{display:block}
+  table.ana tr.detay td{display:block}
+}
+</style>
+</head>
+<body>
+<div class="ust">
+  <a href="/">← Panel Merkezi</a>
+  <a href="rsi_grafik.html?liste=donus">📈 RSI Grafiği</a>
+  <span class="bosluk"></span>
+  <span id="saat" class="kucuk"></span>
+  <button id="tema" title="Gece / gündüz">🌙</button>
+</div>
+<h1>🔄 Dönüş Radarı</h1>
+<p class="altbaslik">Tepe ya da dip yapıp <b>dönmeye başlayan</b> Binance vadeli coinleri. Tek bir göstergeye bakmaz: aşırılık (RSI, koşu uzunluğu,
+ortalamadan uzaklık), yorulma (RSI uyumsuzluğu, hacim ve işlem sayısı, ret fitili), bağlam (likidite süpürme, üst zaman dilimi) ve <b>teyit</b>
+(tepeye çıkan son itkinin dibinin kırılması). 1 saatlik, 4 saatlik ve günlük mumlarda, saat başı güncellenir. <span id="ozet"></span></p>
+<div class="bulgu"><b>Önce şunu bilin:</b> geriye dönük testte (170 coin, 1s ~6 ay, 4s ~16 ay, 1g ~4 yıl) RSI, hacim, işlem sayısı, uyumsuzluk, fitil gibi
+işaretler dönüşün tutacağını <b>öngörmedi</b>; tetikli sinyallerin ortalama sonucu komisyon sonrası <b>yaklaşık 0R</b>. Tepenin (dibin) tutmasını belirleyen tek tutarlı
+etken, fiyatın tepeden ne kadar uzaklaştığı. <b>Tutma %</b> sütunu bu yüzden geçmişte aynı mesafedeki sinyallerin gerçek tutma oranıdır; tek başına al-sat sinyali değildir.
+Ayrıntı: <a href="#" data-g-link="KARNE">📊 Karne</a>.</div>
+
+<div class="sekmeler" id="sekmeler">
+  <button class="btn zirve aktif" data-g="ZIRVE">🔴 Zirve → düşüş</button>
+  <button class="btn dip" data-g="DIP">🟢 Dip → yükseliş</button>
+  <button class="btn" data-g="SONUC">✅ Sonuçlanan</button>
+  <button class="btn" data-g="KARNE">📊 Karne</button>
+</div>
+
+<div class="kart" id="listeKart">
+  <div class="suzgec">
+    <div class="grup" id="tfSec"><span>Zaman:</span>
+      <button class="btn aktif" data-tf="">Hepsi</button><button class="btn" data-tf="1h">1s</button><button class="btn" data-tf="4h">4s</button><button class="btn" data-tf="1d">1g</button></div>
+    <div class="grup" id="asamaSec"><span>Aşama:</span>
+      <button class="btn aktif" data-a="">Hepsi</button><button class="btn" data-a="TETIK">🎯 Tetik</button><button class="btn" data-a="IZLE">👀 İzle</button></div>
+    <label class="grup" title="Yalnız tetikli sinyallere uygulanır">En az tutma % <input type="range" id="minSkor" min="0" max="90" step="5" value="0"> <b id="minSkorD">0</b></label>
+    <input type="text" id="ara" placeholder="🔍 coin" spellcheck="false">
+  </div>
+  <div class="tabloKutu"><table class="ana" id="tablo"></table></div>
+  <details class="acikla not" style="margin-top:10px">
+    <summary>Nasıl okunur?</summary>
+    <p><b>🎯 Tetik</b>: tepe (dip) oluştu ve fiyat, tepeye çıkan son itkinin dibini (<b>tetik</b> seviyesi) aşağı kırdı; dönüş teyitli.
+    <b>👀 İzle</b>: tepe adayı var, yorulma işaretleri güçlü ama teyit yok; fiyat hâlâ yükselmeye devam edebilir.</p>
+    <p><b>İptal</b>: tepenin (dibin) biraz ötesi; fiyat buraya gelirse zirve tutmamış demektir, sinyal geçersiz olur.
+    <b>Hedef</b>: girişten riskin 1,5 katı kadar ters hareket (1,5R). <b>Şimdi</b>: tetikten beri kaç R gidildiği (eksi = aleyhe).</p>
+    <p><b>Tutma %</b>: geçmişte aynı zaman diliminde, aynı yönde ve tetik anında tepeden <b>aynı uzaklıktaki</b> (ATR cinsinden) sinyallerde tepenin
+    (dibin) ufuk boyunca aşılmadan kalma oranı; yanında örnek sayısı ve o grubun ortalama net sonucu (R). Ufuk: 1s 24 mum, 4s 18 mum, 1g 10 mum.
+    Fiyat tepeden ne kadar uzaklaştıysa tepe o kadar güvenilir; ama kalan yol da o kadar kısalır. Kesinlik ile erken yakalama arasında takas vardır.</p>
+    <p><b>İşaret</b> skoru 0–100: yorulma işaretlerinin (RSI, koşu, hacim, işlem sayısı, uyumsuzluk, fitil, süpürme, üst TF) yoğunluğu. Testte sonucu
+    öngörmedi; yalnız bilgi ve adayları süzmek içindir. Veri olmayan işaret (ör. Bybit kaynaklı coinde işlem sayısı) hesaba girmez.</p>
+    <p><b>Üst TF</b>: 1s sinyalinde 4s ve 1g, 4s sinyalinde 1g ve haftalık. "Yükseliş sürüyor" yazıyorsa üst zaman diliminde sağlıklı trend var:
+    alt zaman dilimindeki tepe büyük ihtimalle yalnız bir düzeltmedir. "Aşırı alımda" ya da "düşüş trendinde" ise tepe daha anlamlıdır.</p>
+    <p><b>Türev</b> rozetleri (fonlama, açık pozisyon, tasfiye) Türev Radar'dan gelir; bilgi amaçlıdır, skora ve karneye girmez.</p>
+  </details>
+</div>
+
+<div class="kart" id="sonucKart" hidden>
+  <div class="tabloKutu"><table class="ana" id="sonucTablo"></table></div>
+  <p class="not">Son 48 saatte sonuçlanan sinyaller: ✅ hedef (1,5R) · ❌ iptal (tepe/dip aşıldı) · ⏱ süre doldu (ufuk sonundaki R).</p>
+</div>
+
+<div class="kart" id="karneKart" hidden>
+  <div id="karne" class="not">Karne yükleniyor…</div>
+</div>
+
+<div class="meta" id="meta"></div>
+<p class="uyari">Bilgilendirme amaçlıdır, yatırım tavsiyesi değildir. Geçmiş başarı gelecekteki sonucu garanti etmez.</p>
+
+<script>
+(function () {
+'use strict';
+var BASE = location.hostname === 'veri.ayaydin.tr' ? '' : 'https://veri.ayaydin.tr';
+var TF_AD = { '1h': '1s', '4h': '4s', '1d': '1g' };
+var TF_SIRA = { '1h': 0, '4h': 1, '1d': 2 };
+var D = null, KARNE_TAM = null;
+var DURUM = { g: 'ZIRVE', tf: '', a: '', min: 0, ara: '', sira: 'yeni', acik: null };
+
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function nf(v, d) { return (v === null || v === undefined || isNaN(v)) ? '—' : Number(v).toLocaleString('tr-TR', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+function sgn(v, d) { return v === null || v === undefined ? '—' : (v > 0 ? '+' : '') + nf(v, d); }
+function ondalik(p) { if (!(p > 0)) return 2; if (p >= 1000) return 2; if (p >= 1) return 4; return Math.min(10, Math.ceil(-Math.log10(p)) + 3); }
+function fiyat(p) { return p === null || p === undefined ? '—' : nf(p, ondalik(Math.abs(p))); }
+function zaman(ms) {
+  try { return new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' }).format(new Date(ms)).replace(',', ''); }
+  catch (e) { return ''; }
+}
+function taban(s) { return s.replace(/USDT$/, ''); }
+
+/* URL: ?yon=dip&tf=4h&a=TETIK&min=60 */
+(function () {
+  var q = new URLSearchParams(location.search);
+  if (q.get('yon')) DURUM.g = { dip: 'DIP', zirve: 'ZIRVE', sonuc: 'SONUC', karne: 'KARNE' }[q.get('yon').toLowerCase()] || 'ZIRVE';
+  if (TF_AD[q.get('tf')]) DURUM.tf = q.get('tf');
+  if (q.get('a') === 'TETIK' || q.get('a') === 'IZLE') DURUM.a = q.get('a');
+  if (+q.get('min') > 0) DURUM.min = +q.get('min');
+})();
+function urlYaz() {
+  var p = ['yon=' + DURUM.g.toLowerCase()];
+  if (DURUM.tf) p.push('tf=' + DURUM.tf);
+  if (DURUM.a) p.push('a=' + DURUM.a);
+  if (DURUM.min) p.push('min=' + DURUM.min);
+  try { history.replaceState(null, '', location.pathname + '?' + p.join('&')); } catch (e) { /* yoksay */ }
+}
+
+function tutmaHtml(x) {
+  if (x.asama !== 'TETIK' || x.tutma === null || x.tutma === undefined) return '<span class="kucuk" title="Teyit gelmeden tutma oranı hesaplanmaz">teyit yok</span>';
+  return '<div class="tut" title="Geçmişte ' + TF_AD[x.tf] + ' ' + (x.yon === 'ZIRVE' ? 'zirve' : 'dip') + ' sinyallerinde, tetik anında tepeden ' + (x.kova ? x.kova[0] + '–' + (x.kova[1] > 50 ? '∞' : x.kova[1]) : '?') +
+    ' ATR uzaklıkta ' + nf(x.tutma_n, 0) + ' örnek: tepe ufuk boyunca %' + nf(x.tutma, 1) + ' tuttu; ortalama net sonuç ' + sgn(x.bek_r, 2) + 'R">' +
+    '<span class="cubuk"><i style="width:' + Math.max(0, Math.min(100, x.tutma)) + '%"></i></span><b>%' + nf(x.tutma, 0) + '</b></div>' +
+    '<small class="kucuk">' + nf(x.mesafe_atr, 1) + ' ATR · ort ' + sgn(x.bek_r, 2) + 'R</small>';
+}
+function grafikLink(x) { return 'rsi_grafik.html?coin=' + encodeURIComponent(x.s) + '&tf=' + x.tf + '&liste=donus'; }
+
+function suz() {
+  return (D.sinyaller || []).filter(function (x) {
+    return x.yon === DURUM.g && (!DURUM.tf || x.tf === DURUM.tf) && (!DURUM.a || x.asama === DURUM.a) &&
+           (!DURUM.min || (x.asama === 'TETIK' && x.tutma >= DURUM.min)) && (!DURUM.ara || x.s.indexOf(DURUM.ara) >= 0);
+  });
+}
+function asamaSira(a, b) { return (a.asama === b.asama ? 0 : a.asama === 'TETIK' ? -1 : 1); }
+var SIRALAMA = {
+  yeni: function (a, b) { return asamaSira(a, b) || ((b.tetik_ts || 0) - (a.tetik_ts || 0)) || b.skor - a.skor; },
+  tutma: function (a, b) { return asamaSira(a, b) || ((b.tutma || 0) - (a.tutma || 0)); },
+  skor: function (a, b) { return b.skor - a.skor; },
+  coin: function (a, b) { return a.s.localeCompare(b.s); },
+  tf: function (a, b) { return TF_SIRA[a.tf] - TF_SIRA[b.tf] || b.skor - a.skor; }
+};
+
+function listeYaz() {
+  var z = DURUM.g === 'ZIRVE', l = suz().sort(SIRALAMA[DURUM.sira] || SIRALAMA.yeni);
+  var bas = [['coin', 'Coin'], ['tf', 'TF'], ['yeni', 'Aşama'], ['tutma', 'Tutma'], ['skor', 'İşaret'], ['', 'Fiyat'], ['', z ? 'Zirve' : 'Dip'], ['', 'Tetik'], ['', 'İptal'],
+             ['', 'Hedef'], ['', 'Şimdi'], ['', 'RSI'], ['', 'İşaretler'], ['', 'Üst TF']];
+  var h = '<thead><tr>' + bas.map(function (b) { return '<th' + (b[0] ? ' data-s="' + b[0] + '"' + (DURUM.sira === b[0] ? ' class="sirali"' : '') : '') + '>' + b[1] + '</th>'; }).join('') + '</tr></thead><tbody>';
+  if (!l.length) h += '<tr><td colspan="14" class="bos">Bu süzgeçle şu an sinyal yok.</td></tr>';
+  l.forEach(function (x) {
+    var id = x.s + '|' + x.tf + '|' + x.asama + '|' + x.zirve_ts, ac = DURUM.acik === id;
+    var tt = x.asama === 'TETIK';
+    var simdi = tt ? '<span class="' + (x.r_simdi >= 0 ? 'art' : 'eks') + '">' + sgn(x.r_simdi, 2) + 'R</span><br><small class="kucuk">' + x.tetikten + ' mum önce</small>'
+                   : '<span class="kucuk">tetiğe ' + sgn(x.tetige_pct, 1) + '%</span>';
+    h += '<tr class="satir' + (ac ? ' acik' : '') + '" data-id="' + esc(id) + '">' +
+      '<td class="coin">' + esc(taban(x.s)) + (x.kaynak === 'bybit' ? ' <small title="Mumlar Bybit vadeliden (Binance spotta yok); işlem sayısı ve taker verisi yok">ᴮ</small>' : '') + '</td>' +
+      '<td data-m="TF">' + TF_AD[x.tf] + '</td>' +
+      '<td><span class="asama a-' + x.asama + '">' + (tt ? '🎯 Tetik' : '👀 İzle') + '</span></td>' +
+      '<td data-m="Tutma">' + tutmaHtml(x) + '</td>' +
+      '<td data-m="İşaret">' + nf(x.skor, 0) + '</td>' +
+      '<td data-m="Fiyat">' + fiyat(x.fiyat) + '</td>' +
+      '<td data-m="' + (z ? 'Zirve' : 'Dip') + '">' + fiyat(x.zirve) + '<br><small class="kucuk">' + sgn(x.zirveden_pct, 1) + '% · ' + x.yas + ' mum</small></td>' +
+      '<td data-m="Tetik">' + fiyat(x.tetik) + '</td>' +
+      '<td data-m="İptal" class="' + (z ? 'eks' : 'art') + '">' + fiyat(x.stop) + '</td>' +
+      '<td data-m="Hedef">' + (tt ? fiyat(x.hedef) : '<span class="kucuk">tetikte</span>') + '</td>' +
+      '<td data-m="Şimdi">' + simdi + '</td>' +
+      '<td data-m="RSI">' + nf(x.rsi, 0) + '</td>' +
+      '<td class="gizle-m">' + (x.etiket || []).slice(0, 4).map(function (e) { return '<span class="etiket">' + esc(e) + '</span>'; }).join('') + '</td>' +
+      '<td class="gizle-m kucuk">' + (x.ust || []).map(esc).join('<br>') + '</td></tr>';
+    if (ac) h += '<tr class="detay"><td colspan="14">' + detayHtml(x) + '</td></tr>';
+  });
+  $('tablo').innerHTML = h + '</tbody>';
+}
+
+function detayHtml(x) {
+  var ad = D.bilesen_ad || {}, ag = D.agirlik || {};
+  var ks = Object.keys(ag).sort(function (a, b) { return ag[b] - ag[a]; });
+  var z = x.yon === 'ZIRVE';
+  var h = '<b>' + esc(taban(x.s)) + ' · ' + TF_AD[x.tf] + ' · ' + (z ? 'zirve' : 'dip') + ' ' + fiyat(x.zirve) + ' (' + zaman(x.zirve_ts) + ')</b>' +
+    (x.tetik_ts ? ' · tetik ' + zaman(x.tetik_ts) + ', giriş ' + fiyat(x.giris) + ', risk %' + nf(x.risk_pct, 2) : '') +
+    ' · <a href="' + grafikLink(x) + '">📈 grafikte aç</a>';
+  h += '<div class="bilesen">' + ks.map(function (k) {
+    var v = x.b ? x.b[k] : null;
+    return '<div><span class="ad">' + esc(ad[k] || k) + ' <small class="kucuk">(' + ag[k] + ')</small></span>' +
+      (v === null || v === undefined ? '<span class="yok">veri yok</span>' : '<span class="cubuk"><i style="width:' + Math.round(v * 100) + '%"></i></span><small>' + nf(v, 2) + '</small>') + '</div>';
+  }).join('') + '</div>';
+  h += '<div class="kucuk">Üst zaman dilimi: ' + (x.ust || []).map(esc).join(' · ') + '</div>';
+  if (x.turev && x.turev.length) h += '<div class="kucuk">Türev (bilgi): ' + x.turev.map(function (t) { return '<span class="etiket">' + esc(t) + '</span>'; }).join('') + '</div>';
+  if (x.asama === 'TETIK' && x.tutma !== null && x.tutma !== undefined) h += '<div class="kucuk">Tutma: geçmişte ' + TF_AD[x.tf] + ' ' + (z ? 'zirve' : 'dip') +
+    ' sinyallerinde, tetik anında tepeden ' + (x.kova ? x.kova[0] + '–' + (x.kova[1] > 50 ? '∞' : x.kova[1]) : '?') + ' ATR uzaklıkta olan ' + nf(x.tutma_n, 0) + ' örnekte tepe ufuk boyunca <b>%' + nf(x.tutma, 1) +
+    '</b> aşılmadı; ortalama net sonuç ' + sgn(x.bek_r, 2) + 'R. Bu sinyalde uzaklık ' + nf(x.mesafe_atr, 2) + ' ATR.</div>';
+  h += '<div class="kucuk">İşaret çubukları (0–1) yorulma işaretlerinin gücüdür; testte sonucu öngörmedi, bilgi amaçlıdır.</div>';
+  return h;
+}
+
+function sonucYaz() {
+  var l = (D.sonuclanan || []).filter(function (x) { return (!DURUM.tf || x.tf === DURUM.tf) && (!DURUM.ara || x.s.indexOf(DURUM.ara) >= 0); });
+  var h = '<thead><tr><th>Coin</th><th>TF</th><th>Yön</th><th>Tutma</th><th>Sonuç</th><th>R (net)</th><th>Tetik</th><th>Sonuç zamanı</th></tr></thead><tbody>';
+  if (!l.length) h += '<tr><td colspan="8" class="bos">Son 48 saatte sonuçlanan sinyal yok.</td></tr>';
+  l.forEach(function (x) {
+    var s = { hedef: '✅ hedef', stop: '❌ iptal', sure: '⏱ süre doldu' }[x.sonuc] || x.sonuc;
+    h += '<tr class="satir" data-link="' + esc(grafikLink(x)) + '"><td class="coin">' + esc(taban(x.s)) + '</td><td data-m="TF">' + TF_AD[x.tf] + '</td><td data-m="Yön">' +
+      (x.yon === 'ZIRVE' ? '🔴 zirve' : '🟢 dip') + '</td><td data-m="Tutma">' + (x.tutma === null || x.tutma === undefined ? '—' : '%' + nf(x.tutma, 0)) + '</td><td data-m="Sonuç">' + s + '</td><td data-m="R" class="' +
+      (x.r_net >= 0 ? 'art' : 'eks') + '">' + sgn(x.r_net, 2) + '</td><td data-m="Tetik">' + zaman(x.tetik_ts) + '</td><td data-m="Sonuç">' + zaman(x.son_ts) + '</td></tr>';
+  });
+  $('sonucTablo').innerHTML = h + '</tbody>';
+}
+
+function karneYaz() {
+  var k = KARNE_TAM, c = D && D.canli;
+  if (!k) { $('karne').innerHTML = 'Karne henüz üretilmemiş (donus_karne.py gece çalışır).'; return; }
+  function yuzde(v) { return v === null || v === undefined ? '—' : '%' + nf(v, 1); }
+  function renkR(v) { return v === null || v === undefined ? '' : v > 0.05 ? 'iyi' : v < -0.05 ? 'kotu' : ''; }
+  var h = '<p><b>Geriye dönük test</b>: ' + nf(k.n_coin, 0) + ' coin, ' + nf(k.n_olay, 0) + ' sonuçlanmış tetik · ' + esc(k.tanim) + '<br>' +
+    '<small>' + esc(k.not) + ' Son hesap: ' + zaman(Date.parse(k.guncel)) + '.</small></p>' +
+    '<div class="bulgu"><b>Nasıl okunmalı?</b> Asıl tablo <b>mesafe</b> tablosudur: tetik anında fiyat tepeden (dipten) kaç ATR uzaklaşmışsa, tepe ufuk boyunca yüzde kaç tuttu. ' +
+    '"Eski / yeni" sütunları zamanın iki yarısıdır; birbirine yakınsa oran kararlıdır. <b>Ort. R</b> sütunu (komisyon ve kayma düşülmüş; hedef 1,5R, stop tepenin biraz ötesi) ' +
+    'sıfıra yakınsa o grupta işlem açmanın geçmişte ortalama kazandırmadığı anlamına gelir. İşaret skoru tabloları, skorun sonucu öngörüp öngörmediğini göstermek için vardır.</div><div class="karneIc">';
+  ['1h', '4h', '1d'].forEach(function (tf) {
+    ['ZIRVE', 'DIP'].forEach(function (yon) {
+      var o = k.ozet && k.ozet[tf] && k.ozet[tf][yon];
+      if (!o || !o.hepsi || !o.hepsi.n) return;
+      var don = k.donem && k.donem[tf] ? zaman(k.donem[tf][0]).slice(0, 5) + ' – ' + zaman(k.donem[tf][1]).slice(0, 5) : '';
+      h += '<div><h3>' + (yon === 'ZIRVE' ? '🔴 Zirve' : '🟢 Dip') + ' · ' + TF_AD[tf] + ' <small class="kucuk">' + don + ' · tüm tetikler: tutma ' + yuzde(o.hepsi.tutma) +
+        ', ort ' + sgn(o.hepsi.ort_r_net, 2) + 'R, n ' + nf(o.hepsi.n, 0) + '</small></h3>' +
+        '<table><thead><tr><th>Tepeden uzaklık</th><th>n</th><th>Tutma</th><th>Eski / yeni</th><th>Hedef</th><th>Ort. R</th></tr></thead><tbody>';
+      (o.mesafe || []).forEach(function (q) {
+        if (!q.n) return;
+        h += '<tr><td>' + nf(q.a, 1) + '–' + (q.b > 50 ? '∞' : nf(q.b, 1)) + ' ATR</td><td>' + nf(q.n, 0) + '</td><td><b>' + yuzde(q.tutma) + '</b></td><td class="kucuk">' +
+          yuzde(q.tutma_eski) + ' / ' + yuzde(q.tutma_yeni) + '</td><td>' + yuzde(q.isabet) + '</td><td class="' + renkR(q.ort_r_net) + '">' + sgn(q.ort_r_net, 2) + '</td></tr>';
+      });
+      h += '</tbody></table><details class="acikla"><summary class="kucuk">İşaret skoruna göre</summary><table><thead><tr><th>Skor</th><th>n</th><th>Tutma</th><th>Hedef</th><th>Ort. R</th></tr></thead><tbody>';
+      (o.skor_kovalari || []).forEach(function (q) {
+        if (!q.n) return;
+        h += '<tr><td>' + q.a + '–' + Math.min(q.b, 100) + '</td><td>' + nf(q.n, 0) + '</td><td>' + yuzde(q.tutma) + '</td><td>' + yuzde(q.isabet) + '</td><td class="' + renkR(q.ort_r_net) + '">' + sgn(q.ort_r_net, 2) + '</td></tr>';
+      });
+      h += '</tbody></table></details></div>';
+    });
+  });
+  h += '</div>';
+  if (k.bilesen) {
+    var ad = (D && D.bilesen_ad) || {}, top = {};
+    Object.keys(k.bilesen).forEach(function (tf) {
+      Object.keys(k.bilesen[tf]).forEach(function (yon) {
+        var b = k.bilesen[tf][yon];
+        Object.keys(b).forEach(function (kk) {
+          var t = top[kk] = top[kk] || { vn: 0, vt: 0, vr: 0, yn: 0, yt: 0, yr: 0 }, x = b[kk];
+          t.vn += x.var_n; t.vt += x.var_n * (x.var_tutma || 0) / 100; t.vr += x.var_n * (x.var_r || 0);
+          t.yn += x.yok_n; t.yt += x.yok_n * (x.yok_tutma || 0) / 100; t.yr += x.yok_n * (x.yok_r || 0);
+        });
+      });
+    });
+    h += '<h3 style="margin-top:14px">İşaretler: varken / yokken <small class="kucuk">(tüm zaman dilimleri ve iki yön birlikte; tutma farkının bir kısmı işaretin tepeden uzaklıkla ilişkisinden gelir)</small></h3>' +
+      '<div class="tabloKutu"><table><thead><tr><th>İşaret</th><th>Varken n</th><th>Tutma</th><th>Ort. R</th><th>Yokken n</th><th>Tutma</th><th>Ort. R</th></tr></thead><tbody>';
+    Object.keys(top).forEach(function (kk) {
+      var t = top[kk];
+      h += '<tr><td>' + esc(ad[kk] || kk) + '</td><td>' + nf(t.vn, 0) + '</td><td>' + yuzde(t.vn ? t.vt / t.vn * 100 : null) + '</td><td class="' + renkR(t.vn ? t.vr / t.vn : null) + '">' + sgn(t.vn ? t.vr / t.vn : null, 2) +
+        '</td><td>' + nf(t.yn, 0) + '</td><td>' + yuzde(t.yn ? t.yt / t.yn * 100 : null) + '</td><td class="' + renkR(t.yn ? t.yr / t.yn : null) + '">' + sgn(t.yn ? t.yr / t.yn : null, 2) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  if (c && c.tablo) {
+    var sat = [];
+    Object.keys(c.tablo).forEach(function (tf) { Object.keys(c.tablo[tf]).forEach(function (yon) { var x = c.tablo[tf][yon]; sat.push('<tr><td>' + TF_AD[tf] + ' ' + (yon === 'ZIRVE' ? 'zirve' : 'dip') + '</td><td>' + x.n + '</td><td>' + yuzde(x.tutma) + '</td><td>' + yuzde(x.isabet) + '</td><td>' + yuzde(x.stop) + '</td><td>' + sgn(x.ort_r_net, 2) + '</td></tr>'); }); });
+    h += '<h3 style="margin-top:14px">Canlı defter <small class="kucuk">(sistem çalışmaya başladıktan sonra tetiklenen, sonuçlanmış sinyaller; ' + (c.acik || 0) + ' açık)</small></h3>' +
+      (sat.length ? '<div class="tabloKutu"><table><thead><tr><th>Grup</th><th>n</th><th>Tutma</th><th>Hedef</th><th>İptal</th><th>Ort. R</th></tr></thead><tbody>' + sat.join('') + '</tbody></table></div>'
+                  : '<p>Henüz sonuçlanan canlı sinyal yok. Geriye dönük testteki oranların canlıda da çıkıp çıkmadığı burada görülecek; en az 200 örnek birikmeden eşikler değiştirilmez.</p>');
+  }
+  $('karne').innerHTML = h;
+}
+
+function ciz() {
+  $('listeKart').hidden = DURUM.g === 'SONUC' || DURUM.g === 'KARNE';
+  $('sonucKart').hidden = DURUM.g !== 'SONUC';
+  $('karneKart').hidden = DURUM.g !== 'KARNE';
+  Array.prototype.forEach.call($('sekmeler').children, function (b) { b.classList.toggle('aktif', b.getAttribute('data-g') === DURUM.g); });
+  Array.prototype.forEach.call($('tfSec').querySelectorAll('.btn'), function (b) { b.classList.toggle('aktif', b.getAttribute('data-tf') === DURUM.tf); });
+  Array.prototype.forEach.call($('asamaSec').querySelectorAll('.btn'), function (b) { b.classList.toggle('aktif', b.getAttribute('data-a') === DURUM.a); });
+  $('minSkor').value = DURUM.min; $('minSkorD').textContent = DURUM.min;
+  urlYaz();
+  if (!D) return;
+  if (DURUM.g === 'SONUC') sonucYaz();
+  else if (DURUM.g === 'KARNE') { if (KARNE_TAM) karneYaz(); else karneGetir(); }
+  else listeYaz();
+}
+
+function getir(ad) { return fetch(BASE + '/' + ad + '?t=' + Math.floor(Date.now() / 60000), { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }); }
+function karneGetir() {
+  getir('donus_karne.json').then(function (k) { KARNE_TAM = k; karneYaz(); }).catch(function () { $('karne').innerHTML = 'Karne dosyası alınamadı (donus_karne.json).'; });
+}
+function yukle() {
+  getir('donus_radar.json').then(function (d) {
+    D = d;
+    var sy = { ZIRVE: 0, DIP: 0 }, tt = 0;
+    (d.sinyaller || []).forEach(function (x) { sy[x.yon]++; if (x.asama === 'TETIK') tt++; });
+    var yas = (Date.now() / 1000 - d.ts) / 60;
+    $('ozet').innerHTML = 'Şu an <b>' + sy.ZIRVE + '</b> zirve, <b>' + sy.DIP + '</b> dip adayı (' + tt + ' tetikli).';
+    $('meta').innerHTML = 'Son güncelleme: <b>' + zaman(d.ts * 1000) + '</b>' + (yas > 90 ? ' <span class="eks">⚠️ ' + nf(yas / 60, 1) + ' saattir güncellenmiyor</span>' : '') +
+      ' · taranan ' + d.evren.n + ' coin (24s hacmi ≥ ' + nf(d.evren.min_hacim / 1000, 0) + 'K$) · mum kaynağı: ' +
+      Object.keys(d.evren.mum_kaynak || {}).map(function (k) { return k + ' ' + d.evren.mum_kaynak[k]; }).join(', ') +
+      ' · hesap ' + nf(d.sure_sn, 0) + ' sn · eşikler ' + (d.kilitli_esikler ? 'kilitli' : 'açık');
+    ciz();
+  }).catch(function (e) { $('tablo').innerHTML = '<tr><td class="bos">Veri alınamadı: ' + esc(e.message) + '</td></tr>'; });
+}
+
+/* olaylar */
+$('sekmeler').addEventListener('click', function (e) { var b = e.target.closest('[data-g]'); if (!b) return; DURUM.g = b.getAttribute('data-g'); DURUM.acik = null; ciz(); });
+document.addEventListener('click', function (e) { var a = e.target.closest('[data-g-link]'); if (!a) return; e.preventDefault(); DURUM.g = a.getAttribute('data-g-link'); ciz(); window.scrollTo(0, 0); });
+$('tfSec').addEventListener('click', function (e) { var b = e.target.closest('[data-tf]'); if (!b) return; DURUM.tf = b.getAttribute('data-tf'); ciz(); });
+$('asamaSec').addEventListener('click', function (e) { var b = e.target.closest('[data-a]'); if (!b) return; DURUM.a = b.getAttribute('data-a'); ciz(); });
+$('minSkor').addEventListener('input', function () { DURUM.min = +this.value; ciz(); });
+$('ara').addEventListener('input', function () { DURUM.ara = this.value.trim().toUpperCase(); ciz(); });
+$('tablo').addEventListener('click', function (e) {
+  var th = e.target.closest('th[data-s]');
+  if (th) { DURUM.sira = th.getAttribute('data-s'); listeYaz(); return; }
+  if (e.target.closest('a')) return;
+  var tr = e.target.closest('tr.satir');
+  if (!tr) return;
+  var id = tr.getAttribute('data-id');
+  DURUM.acik = DURUM.acik === id ? null : id;
+  listeYaz();
+});
+$('sonucTablo').addEventListener('click', function (e) { var tr = e.target.closest('tr[data-link]'); if (tr) location.href = tr.getAttribute('data-link'); });
+$('tema').textContent = document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
+$('tema').addEventListener('click', function () {
+  var k = document.documentElement.classList.toggle('dark');
+  try { localStorage.setItem('radar_theme', k ? 'dark' : 'light'); } catch (e) { /* yoksay */ }
+  this.textContent = k ? '☀️' : '🌙';
+});
+function saat() {
+  try { $('saat').textContent = '🕒 ' + new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' }).format(new Date()) + ' TR'; } catch (e) { /* yoksay */ }
+}
+saat(); setInterval(saat, 30000);
+ciz(); yukle(); setInterval(yukle, 5 * 60000);
+})();
+</script>
+</body>
+</html>

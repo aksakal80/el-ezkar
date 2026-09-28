@@ -1,0 +1,10 @@
+[Unit]
+Description=Dönüş Radarı - haftalık geçmiş tamamlama zamanlayıcı
+
+[Timer]
+OnCalendar=Sun *-*-* 04:32:00
+Persistent=true
+Unit=donus_derin.service
+
+[Install]
+WantedBy=timers.target

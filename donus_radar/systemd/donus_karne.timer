@@ -1,0 +1,10 @@
+[Unit]
+Description=Dönüş Radarı - gece karnesi zamanlayıcı
+
+[Timer]
+OnCalendar=*-*-* 05:17:00
+Persistent=true
+Unit=donus_karne.service
+
+[Install]
+WantedBy=timers.target

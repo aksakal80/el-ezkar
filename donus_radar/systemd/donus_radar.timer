@@ -1,0 +1,10 @@
+[Unit]
+Description=Dönüş Radarı - saat başı (mum kapanışından 2 dk sonra)
+
+[Timer]
+OnCalendar=*-*-* *:02:00
+Persistent=true
+Unit=donus_radar.service
+
+[Install]
+WantedBy=timers.target
