@@ -1,0 +1,2175 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Leyla_KCTK
+//@version=6
+// ══════════════════════════════════════════════════════════════════════════
+//  AYRIŞMA + MSB-OB PAKETİ — v2  (Birleşik Sinyal + Bilgi Paneli)
+// ══════════════════════════════════════════════════════════════════════════
+//
+//  v2'DE YENİ
+//    ⚡ Birleşik sinyal motoru (BÖLÜM 30)
+//       Beş bağımsız teyit (fiyat yapısı · σ yapısı · ayrışma · trend ·
+//       USDT.D rejimi) oy verir. Skor eşiği keserse AL / SAT etiketi çıkar.
+//       Etiketin üzerine gelince: gerekçe, yapısal stop, 1R / 2R hedef.
+//    📋 Tek bilgi paneli (BÖLÜM 31)
+//       Skor, son sinyal ve getirisi, ayrışma, β, korelasyon, hacim, rejim,
+//       yapı, trend, DİO, EN YAKIN destek / direnç, OB durumu, uyarılar.
+//       Açık / koyu temaya kendiliğinden uyar; konumu ve boyutu seçilebilir.
+//    🧹 Sade görünüm: yardımcı katmanları (Pivot, BOLL, SRL, ATH, Fibo,
+//       LuxAlgo OB, DİO çizgisi) tek tuşla gizler.
+//    🎨 Osilatör: güce göre gradyan renk, gradyan dolgu, ±1σ nötr bant,
+//       altta skor şeridi, sinyal barında panel vurgusu.
+//
+//  DÜZELTİLEN HATALAR
+//    • Be-OB döngüsünde eksik "else" → kırılan kutu için de alarm çalıyordu.
+//    • Kırılan kutu yerine EN ESKİ kutu siliniyordu (array.shift).
+//    • OB bölge alarmları fiyat bölgedeyken HER BARDA çalıyordu → artık
+//      yalnızca GİRİŞ anında, bar kapanışında bir kez.
+//    • MSB çizgi / etiket / kutuları sınırsız birikiyordu; 500 çizim sınırı
+//      dolunca en eski nesneler (LuxAlgo OB kutuları dahil) siliniyordu.
+//      → hepsi adetle sınırlandı. MSB çizgisi artık tek kat çizilir.
+//    • MSB ve σ-MSB yapısı modül kapalıyken hiç hesaplanmıyordu → yapı her
+//      zaman hesaplanır (sinyal motoru kullanır), yalnızca çizim anahtara bağlı.
+//    • Pivot etiketlerinde ham ondalık → sembolün fiyat hassasiyeti.
+//    • DİO tablosu siyah zemin / beyaz yazıydı (açık temada okunmuyordu)
+//      → bilgi paneline taşındı, tema renklerini kullanır.
+//
+//  MODÜLLER
+//    Fiyat paneli : Birleşik AL/SAT · MSB/OB kutuları · LuxAlgo emir blokları
+//                   Pivot · MA · BOLL S/R + SRL · ATH · Fibo · DİO mum rengi
+//                   + AYRIŞMA beklenen-fiyat çizgisi, boşluk bandı, rejim tonu
+//    Alt panel    : AYRIŞMA osilatörü (σ) + σ-MSB + Fibo (σ) + DİO + skor şeridi
+//
+//  MİMARİ NOTU  : script overlay=false; fiyat paneline gidecek TÜM çizimler
+//                 force_overlay=true ile itilir.
+//                 (fill() force_overlay DESTEKLEMEZ — CE10120.)
+// ══════════════════════════════════════════════════════════════════════════
+indicator(title="AYRIŞMA + MSB-OB · Birleşik Sinyal v2",
+          shorttitle="AYR+MSB-OB v2",
+          overlay=false,
+          max_lines_count=500,
+          max_labels_count=500,
+          max_boxes_count=500,
+          max_bars_back=5000)
+
+// ██████████ KISIM 0 — GENEL · SİNYAL · PANEL (en sık kullanılan ayarlar) ██████████
+
+gG = "⚙️🧭⚙️🧭⚙️ GENEL GÖRÜNÜM ⚙️🧭⚙️🧭⚙️"
+sade = input.bool(false, "🧹 Sade görünüm (yardımcı katmanları gizle)", group = gG,
+     tooltip = "Tek tuşla Pivot, Bollinger, SRL, ATH, Fibonacci, LuxAlgo emir blokları ve DİO çizgisini gizler. Ayrışma osilatörü, MSB yapısı, birleşik sinyaller ve bilgi paneli kalır. Kapatınca her modül kendi ayarına döner.")
+
+gS = "⚡🎯⚡🎯⚡ BİRLEŞİK SİNYAL (AL / SAT) ⚡🎯⚡🎯⚡"
+sig_on      = input.bool(true, "AL / SAT etiketlerini göster", group = gS,
+     tooltip = "Beş bağımsız teyit (fiyat yapısı, σ yapısı, ayrışma, trend, USDT.D rejimi) +1 / −1 / 0 oy verir. Skor gereken teyit sayısını YUKARI keserse AL, eksi tarafta AŞAĞI keserse SAT çıkar. Tüm oylar aynı yöndeyse GÜÇLÜ yazar. Etiketin üzerine gelince gerekçe, yapısal stop ve 1R / 2R hedef görünür.")
+sig_min     = input.int(3, "Gereken teyit sayısı", minval = 1, maxval = 5, group = gS,
+     tooltip = "Açık bileşen sayısından büyükse otomatik olarak ona indirilir. Büyüdükçe daha az ama daha seçici sinyal.")
+sig_conf    = input.bool(true, "Bar kapanışını bekle (repaint yok)", group = gS,
+     tooltip = "Açıkken sinyal yalnızca bar kapandığında çıkar ve bir daha kaybolmaz. Kapalıyken bar içinde görünüp kaybolabilir.")
+sig_cool    = input.int(5, "Aynı yönde iki sinyal arası en az (bar)", minval = 0, maxval = 200, group = gS)
+sig_cMSB    = input.bool(true, "Fiyat yapısı",  inline = "sc1", group = gS)
+sig_cZM     = input.bool(true, "σ yapısı",      inline = "sc1", group = gS)
+sig_cZ      = input.bool(true, "Ayrışma ±1σ",   inline = "sc1", group = gS)
+sig_cTrd    = input.bool(true, "Trend (EMA)",   inline = "sc2", group = gS)
+sig_cReg    = input.bool(true, "USDT.D rejimi", inline = "sc2", group = gS,
+     tooltip = "Rejim bileşeni yalnızca 'USDT.D zemin tonu' açıkken oy kullanır.")
+sig_trLen   = input.int(50, "Trend EMA uzunluğu", minval = 5, maxval = 500, inline = "tr", group = gS)
+sig_trShow  = input.bool(false, "Grafikte çiz", inline = "tr", group = gS)
+sig_colBuy  = input.color(#00c853, "Renk: AL",  inline = "scol", group = gS)
+sig_colSell = input.color(#ff1744, "SAT",       inline = "scol", group = gS)
+sig_szStr   = input.string("Küçük", "Etiket boyutu", options = ["Çok küçük", "Küçük", "Normal"], group = gS)
+sig_keep    = input.int(60, "Ekranda tutulacak etiket", minval = 5, maxval = 200, group = gS)
+sig_bars    = input.bool(false, "Mumları skora göre renklendir (DİO renginin yerine)", group = gS)
+sig_strip   = input.bool(true, "Alt panelde skor şeridi", group = gS,
+     tooltip = "Osilatör panelinin altında her barın skoru renkli şerit olarak görünür: yeşil = yükseliş teyitleri, kırmızı = düşüş teyitleri, gri = kararsız.")
+sig_alertOn = input.bool(true, "Detaylı alert() mesajları", group = gS,
+     tooltip = "Alarm kurarken koşul olarak 'Herhangi bir alert() fonksiyon çağrısı' seçilirse: AL / SAT (skor ve stop ile) ve MSB kutusuna GİRİŞ mesajları gönderilir. Bar kapanışında bir kez.")
+
+gD = "📋📊📋📊📋 BİLGİ PANELİ 📋📊📋📊📋"
+db_on    = input.bool(true, "Bilgi panelini göster", group = gD)
+db_mode  = input.string("Kompakt", "İçerik", options = ["Kompakt", "Detaylı"], group = gD,
+     tooltip = "Kompakt: skor, son sinyal, ayrışma, yapı, en yakın destek / direnç. Detaylı: β, korelasyon, göreli hacim, beklenen fiyat, rejim, trend, yorum, DİO ve OB durumu da eklenir.")
+db_pane  = input.string("Fiyat paneli", "Panel", options = ["Fiyat paneli", "Alt panel"], group = gD)
+db_pos   = input.string("Sağ üst", "Konum",
+     options = ["Sağ üst", "Sağ orta", "Sağ alt", "Sol üst", "Sol orta", "Sol alt", "Orta üst", "Orta alt"], group = gD)
+db_szStr = input.string("Küçük", "Yazı boyutu", options = ["Çok küçük", "Küçük", "Normal"], group = gD)
+
+// ██████████ KISIM 1 — AYRIŞMA (yankı düzeltmeli) ██████████
+
+// ── Girdiler ────────────────────────────────────────────────────────────────
+g1 = "🌟🎯🌟🎯🌟 AYRIŞMA · PİYASA FAKTÖRÜ 🌟🎯🌟🎯🌟"
+symBtc = input.symbol("BINANCE:BTCUSDT.P", "BTC sembolü", group=g1)
+symEth = input.symbol("BINANCE:ETHUSDT.P", "ETH sembolü", group=g1)
+wBtc   = input.float(0.70, "BTC ağırlığı (kalanı ETH)", minval=0.0, maxval=1.0, step=0.05, group=g1,
+         tooltip="Piyasa faktörü = ağırlık × BTC getirisi + (1 − ağırlık) × ETH getirisi.")
+lenB   = input.int(100, "β / korelasyon penceresi (bar)", minval=20, maxval=1000, group=g1,
+         tooltip="Coinin piyasaya duyarlılığının (β) ve korelasyonun ölçüldüğü pencere.")
+lenA   = input.int(30,  "Ayrışma penceresi (bar)",       minval=3,  maxval=500,  group=g1,
+         tooltip="Piyasadan arındırılmış getirilerin biriktirildiği pencere. Küçük = hızlı ama gürültülü, büyük = yavaş ama güvenilir.")
+pencTip= input.string("Sönümlü (yankısız)", "Pencere tipi", options=["Sönümlü (yankısız)","Sert pencere (eski)"], group=g1,
+         tooltip="Sert pencere, coinin kendi sıçramasını tam lenA bar sonra SAHTE olarak tekrarlar (yankı). Sönümlü birikimde bu yoktur.")
+
+g2 = "💧🌊💧🌊💧 AYRIŞMA · REJİM (USDT.D) 💧🌊💧🌊💧"
+useDom = input.bool(false, "USDT.D zemin tonu", group=g2)
+symDom = input.symbol("CRYPTOCAP:USDT.D", "Dominans sembolü", group=g2)
+lenDom = input.int(12, "Değişim penceresi (bar)", minval=1, group=g2)
+domTh  = input.float(1.2, "Rejim eşiği (%) — büyütürsen zemin sadeleşir", minval=0.0, step=0.1, group=g2)
+
+g3 = "✨👁✨👁✨ AYRIŞMA · GÖRÜNÜM ✨👁✨👁✨"
+showShadow = input.bool(false, "Beklenen fiyat çizgisi", group=g3)
+showGap    = input.bool(true, "Ayrışma boşluğu bandı", group=g3)
+zTh        = input.float(2.0, "Ayrışma eşiği (σ)", minval=0.5, step=0.5, group=g3,
+             tooltip="Osilatör bu değeri aşınca BELİRGİN ayrışma sayılır; çizgi rengi bu değere doğru koyulaşır.")
+showBand   = input.bool(true, "±1σ nötr bant", group=g3,
+             tooltip="Osilatörde 'piyasayla birlikte gidiyor' bölgesini (−1σ … +1σ) hafifçe boyar.")
+
+gR = "🌈🎨🌈🎨🌈 AYRIŞMA · RENKLER 🌈🎨🌈🎨🌈"
+colUp  = input.color(#26a69a, "Pozitif ayrışma",  group=gR)
+colDn  = input.color(#ef5350, "Negatif ayrışma",  group=gR)
+colNe  = input.color(#787b86, "Nötr / çizgi / yazı", group=gR)
+colOff = input.color(#ef5350, "Zemin: risk-off (USDT.D yükseliyor)", group=gR)
+colOn  = input.color(#26a69a, "Zemin: risk-on (USDT.D düşüyor)",     group=gR)
+zemSid = input.int(5, "Zemin tonu şiddeti (0 = kapalı, 10 = koyu)", minval=0, maxval=10, group=gR)
+bantSid= input.int(9, "Boşluk bandı şiddeti (0 = kapalı, 10 = koyu)", minval=0, maxval=10, group=gR)
+
+// ── Veri (repaint güvenli: lookahead_off) ───────────────────────────────────
+[btc, vBtc] = request.security(symBtc, timeframe.period, [close, volume], barmerge.gaps_off, barmerge.lookahead_off)
+eth         = request.security(symEth, timeframe.period, close,           barmerge.gaps_off, barmerge.lookahead_off)
+dom         = useDom ? request.security(symDom, timeframe.period, close,  barmerge.gaps_off, barmerge.lookahead_off) : float(na)
+
+lr(_s) => na(_s) or na(_s[1]) or _s[1] <= 0 ? 0.0 : math.log(_s / _s[1])
+
+rc = lr(close)
+rm = wBtc * lr(btc) + (1.0 - wBtc) * lr(eth)
+
+// ── β (kayan) ───────────────────────────────────────────────────────────────
+mC   = ta.sma(rc, lenB)
+mM   = ta.sma(rm, lenB)
+cov  = ta.sma(rc * rm, lenB) - mC * mM
+vari = ta.sma(rm * rm, lenB) - mM * mM
+beta = vari > 0 ? cov / vari : 1.0
+beta := math.max(-1.0, math.min(4.0, nz(beta, 1.0)))
+
+// ── Artık (piyasa çıkarılmış) ───────────────────────────────────────────────
+resid  = rc - beta * rm
+sd     = ta.stdev(resid, lenB)
+
+// 🔴 YANKI DÜZELTMESİ: sert pencere (math.sum) coinin kendi sıçramasını tam lenA bar sonra
+// pencereden DÜŞÜRÜR → hem gri çizgide hem osilatörde ters işaretli SAHTE bir tekrar üretir.
+// Sönümlü birikimde eski getiriler yavaşça solar, uçurumdan düşmez → yankı yoktur.
+sonumlu = pencTip == "Sönümlü (yankısız)"
+phi = 1.0 - 1.0 / lenA
+var float sBir = 0.0
+sBir := na(sBir[1]) ? resid : sBir[1] * phi + resid
+
+cumRes = sonumlu ? sBir : math.sum(resid, lenA)
+sdCum  = sonumlu ? sd * lenA / math.sqrt(2.0 * lenA - 1.0) : sd * math.sqrt(lenA)
+z      = sdCum > 0 ? cumRes / sdCum : 0.0
+
+// Gri çizgi ile osilatör TEK kaynaktan gelir (özdeşlik: close*exp(-cumRes))
+expPrice = close * math.exp(-cumRes)
+gapPct   = (math.exp(cumRes) - 1.0) * 100.0
+corr     = nz(ta.correlation(rc, rm, lenB), 0.0)
+
+// Göreli hacim: coinin kendi ortalamasına göre hacmi ÷ BTC'ninki (birimsiz)
+avC  = ta.sma(volume, lenB)
+avB  = ta.sma(vBtc,  lenB)
+rvC  = na(avC) or avC <= 0 ? na : volume / avC
+rvB  = na(avB) or avB <= 0 ? na : vBtc  / avB
+volX = na(rvC) or na(rvB) or rvB <= 0 ? na : rvC / rvB
+
+// Ayrışma kaç bardır aynı yönde
+yon = z >= 0 ? 1 : -1
+var int sure = 0
+sure := na(yon[1]) or yon != yon[1] ? 1 : sure + 1
+zMax = ta.highest(math.abs(z), lenB)
+
+// ── Rejim ───────────────────────────────────────────────────────────────────
+domOk   = useDom and not na(dom) and not na(dom[lenDom]) and dom[lenDom] != 0
+domChg  = domOk ? (dom / dom[lenDom] - 1.0) * 100.0 : float(na)
+riskOff = domOk and domChg >  domTh
+riskOn  = domOk and domChg < -domTh
+mktChg  = math.sum(rm, lenDom) * 100.0
+celiski = riskOff and mktChg > 0
+
+zemTr  = 100 - zemSid
+regCol = zemSid == 0 ? color(na) : riskOff ? color.new(colOff, zemTr) : riskOn ? color.new(colOn, zemTr) : color(na)
+bgcolor(regCol, title="USDT.D rejimi")
+bgcolor(regCol, title="USDT.D rejimi (fiyat paneli)", force_overlay = true)
+
+// ── Fiyat paneli ────────────────────────────────────────────────────────────
+// NOT: fill() force_overlay DESTEKLEMİYOR (CE10120) → boşluk plotcandle gövdesiyle çiziliyor.
+zCol  = z >= 0 ? colUp : colDn
+// Güce göre gradyan: |z| = 0 → nötr gri, |z| ≥ eşik → tam renk
+zGrad = color.from_gradient(math.abs(z), 0.0, zTh, colNe, zCol)
+plot(showShadow ? expPrice : na, "Beklenen fiyat (β×piyasa)", color=color.new(colNe, 20), linewidth=1, force_overlay=true)
+
+gapOn = showGap and bantSid > 0 and not na(expPrice)
+gapHi = math.max(nz(expPrice, close), close)
+gapLo = math.min(nz(expPrice, close), close)
+plotcandle(gapOn ? expPrice : na, gapOn ? gapHi : na, gapOn ? gapLo : na, gapOn ? close : na,
+           title="Ayrışma boşluğu", color=color.new(zCol, 100 - bantSid * 2),
+           bordercolor=color.new(zCol, 100), wickcolor=color.new(zCol, 100), force_overlay=true)
+
+// ── Alt panel: osilatör ─────────────────────────────────────────────────────
+pZ    = plot(z,   "Ayrışma (σ)",    color=zGrad, linewidth=2)
+pZero = plot(0.0, "Piyasa çizgisi", color=color.new(colNe, 100))
+// Gradyan dolgu: çizgide koyu, sıfır çizgisine doğru şeffaflaşır
+fTopC = z >= 0 ? color.new(colUp, 60)  : color.new(colDn, 100)
+fBotC = z >= 0 ? color.new(colUp, 100) : color.new(colDn, 60)
+fill(pZ, pZero, math.max(z, 0.0), math.min(z, 0.0), fTopC, fBotC, title = "Ayrışma dolgusu")
+
+hline(0.0,  "Piyasa çizgisi", color=color.new(colNe, 35), linestyle=hline.style_solid)
+hline(zTh,  "Üst eşik",       color=color.new(colNe, 70), linestyle=hline.style_dotted)
+hline(-zTh, "Alt eşik",       color=color.new(colNe, 70), linestyle=hline.style_dotted)
+hBandU = hline(1.0,  "Nötr bant üst (+1σ)", color=color.new(colNe, 100))
+hBandD = hline(-1.0, "Nötr bant alt (−1σ)", color=color.new(colNe, 100))
+fill(hBandU, hBandD, color = showBand ? color.new(colNe, 93) : na, title = "Nötr bant (±1σ)")
+
+xUp = ta.crossover(z,  zTh)
+xDn = ta.crossunder(z, -zTh)
+plotshape(xUp ? z : na, "Pozitif ayrışma", shape.circle, location.absolute, color.new(colUp, 0), size=size.tiny)
+plotshape(xDn ? z : na, "Negatif ayrışma", shape.circle, location.absolute, color.new(colDn, 0), size=size.tiny)
+
+// ── Metin yardımcıları (Türkçe ondalık: virgül) ─────────────────────────────
+f2(_x, _f) => str.replace_all(str.tostring(_x, _f), ".", ",")
+// NOT: Pine "+0.00" kalıbındaki + işaretini DÜZ KARAKTER basıyor → eksi değerde "-+7,69" çıkıyordu.
+fs(_x)      => (_x >= 0 ? "+" : "") + f2(_x, "0.00")
+fs1(_x)     => (_x >= 0 ? "+" : "") + f2(_x, "0.0")
+fsI(int _x) => (_x > 0 ? "+" : "") + str.tostring(_x)
+
+az     = math.abs(z)
+durum  = az < 1.0  ? "piyasayla birlikte gidiyor" :
+         az < zTh  ? (z > 0 ? "hafif ayrıştı ▲ yukarı" : "hafif ayrıştı ▼ aşağı") :
+                     (z > 0 ? "BELİRGİN AYRIŞMA ▲ yukarı" : "BELİRGİN AYRIŞMA ▼ aşağı")
+durCol = az < 1.0 ? colNe : z > 0 ? colUp : colDn
+betaS  = beta < 0.7 ? "düşük" : beta <= 1.3 ? "orta" : "yüksek"
+korS   = corr < 0.4 ? "zayıf" : corr < 0.7 ? "orta" : "güçlü"
+volS   = na(volX) ? "—" : volX < 0.7 ? "sönük" : volX < 2.0 ? "normal" : "canlı"
+rejS   = celiski ? "ÇELİŞKİ — ralli teyitsiz" : riskOff ? "risk-off (para kenara)" : riskOn ? "risk-on (para piyasada)" : "nötr"
+rejCol = celiski or riskOff ? colDn : riskOn ? colUp : colNe
+
+// (Eski DURUM / NE GÖRÜYORUM kutuları yerine bu metinler BİLGİ PANELİ'nde — BÖLÜM 31)
+// ── Alarmlar ────────────────────────────────────────────────────────────────
+alertcondition(xUp,     "Pozitif ayrışma", "Piyasadan POZİTİF ayrışma eşiği aşıldı")
+alertcondition(xDn,     "Negatif ayrışma", "Piyasadan NEGATİF ayrışma eşiği aşıldı")
+alertcondition(celiski, "Sağlıksız ralli", "Piyasa yukarı AMA USDT.D de yükseliyor — ralli teyitsiz")
+
+
+// ██████████ KISIM 2 — MSB-OB PAKETİ ██████████
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM A: MSB-OB AYARLARI
+// ═══════════════════════════════════════════════════════════════════════════
+grpMSB = "🟡🏗🟡🏗🟡 MSB-OB · YAPI KIRILIMI 🟡🏗🟡🏗🟡"
+show_msb          = input.bool(true,  "MSB Modülünü Aç",                       group=grpMSB)
+zigzag_uzunluk    = input.int(9,      "ZigZag Uzunluğu", minval=2,             group=grpMSB)
+fib_faktoru       = input.float(0.33, "Kırılım Onayı (Fib Faktörü)", 0,1,0.01, group=grpMSB)
+kutu_yazi_boyutu  = input.string(size.tiny, "Kutu Yazı Boyutu",
+     [size.tiny, size.small, size.normal, size.large, size.huge],              group=grpMSB)
+eski_kutulari_sil = input.bool(true,  "Eski/Kırılan Kutuları Sil",             group=grpMSB,
+     tooltip="Kapalıyken kırılan kutu silinmez, kırıldığı barda dondurulur (en fazla 40 tanesi saklanır).")
+msb_maxKutu       = input.int(6, "Her türden en fazla aktif kutu", minval=1, maxval=50, group=grpMSB,
+     tooltip="Kırılmamış Bu-OB / Be-OB / Bu-BB / Be-BB kutularından her türde en fazla kaç tanesi takip edilsin. Fazlası (en eski) silinir; grafik sade kalır, çizim sınırı dolmaz.")
+
+grpMSBC = "🟩🟨🟩🟨🟩 MSB-OB · KUTU RENKLERİ 🟩🟨🟩🟨🟩"
+bu_ob_renk  = input.color(color.new(color.green, 70), "Bu-OB", inline="buob", group=grpMSBC)
+bu_ob_kenar = input.color(color.green,                "B",     inline="buob", group=grpMSBC)
+bu_ob_yazi  = input.color(color.green,                "T",     inline="buob", group=grpMSBC)
+
+be_ob_renk  = input.color(color.new(color.red, 70),   "Be-OB", inline="beob", group=grpMSBC)
+be_ob_kenar = input.color(color.red,                  "B",     inline="beob", group=grpMSBC)
+be_ob_yazi  = input.color(color.red,                  "T",     inline="beob", group=grpMSBC)
+
+bu_bb_renk  = input.color(color.new(color.green, 70), "Bu-BB/MB", inline="bubb", group=grpMSBC)
+bu_bb_kenar = input.color(color.green,                "B",        inline="bubb", group=grpMSBC)
+bu_bb_yazi  = input.color(color.green,                "T",        inline="bubb", group=grpMSBC)
+
+be_bb_renk  = input.color(color.new(color.red, 70),   "Be-BB/MB", inline="bebb", group=grpMSBC)
+be_bb_kenar = input.color(color.red,                  "B",        inline="bebb", group=grpMSBC)
+be_bb_yazi  = input.color(color.red,                  "T",        inline="bebb", group=grpMSBC)
+
+// ── MSB kırılım çizgileri (FİYAT paneli) ───────────────────────────────────
+grpMSBL = "⚡🟠⚡🟠⚡ KIRILIM ÇİZGİLERİ · FİYAT ⚡🟠⚡🟠⚡"
+msbc_on      = input.bool(true, "Ayarlanabilir kırılım çizgilerini çiz", group = grpMSBL)
+msbc_sol     = input.int(0, "Sola uzat (bar)", minval = 0, maxval = 500, group = grpMSBL,
+     tooltip = "Sol ucu kaç bar geriye taşısın. 0 = kırılan yapının başladığı swing noktası.")
+msbc_sag     = input.int(369, "Sağa uzat (bar)", minval = 0, maxval = 500, group = grpMSBL,
+     tooltip = "Sağ ucu kaç bar ileriye taşısın. Gelecek barlara da uzatabilirsin.")
+msbc_uzatStr = input.string("Sağa", "Sonsuz uzatma", options = ["Yok","Sağa","Sola","Her iki yön"], group = grpMSBL,
+     tooltip = "Bar sayısıyla değil, grafiğin sonuna kadar uzatır. Kırılan seviyeyi ileride destek/direnç olarak izlemek için 'Sağa' en kullanışlısı.")
+msbc_kal     = input.int(2, "Çizgi kalınlığı", minval = 1, maxval = 6, group = grpMSBL,
+     tooltip = "v2: Bu seçenek açıkken MSB çizgisi yalnızca bir kez (bu ayarlarla) çizilir; alttaki eski çizgi artık çizilmez.")
+msbc_stilStr = input.string("Düz", "Çizgi stili", options = ["Düz","Kesikli","Noktalı"], group = grpMSBL)
+msbc_bullCol = input.color(color.green, "Yukarı kırılım rengi", group = grpMSBL)
+msbc_bearCol = input.color(color.red,   "Aşağı kırılım rengi",  group = grpMSBL)
+msbc_adet    = input.int(11, "Ekranda tutulacak çizgi sayısı", minval = 1, maxval = 200, group = grpMSBL)
+
+msbc_uzat = msbc_uzatStr == "Yok" ? extend.none : msbc_uzatStr == "Sağa" ? extend.right : msbc_uzatStr == "Sola" ? extend.left : extend.both
+msbc_stil = msbc_stilStr == "Düz" ? line.style_solid : msbc_stilStr == "Kesikli" ? line.style_dashed : line.style_dotted
+
+// ── Yapı kırılımı (AYRIŞMA osilatörü — alt panel) ──────────────────────────
+grpZM = "〰🔵〰🔵〰 KIRILIM ÇİZGİLERİ · AYRIŞMA (σ) 〰🔵〰🔵〰"
+zm_on     = input.bool(true, "Osilatör yapı kırılımını çiz", group = grpZM)
+zm_len    = input.int(9, "ZigZag uzunluğu (σ serisi)", minval = 2, maxval = 200, group = grpZM,
+     tooltip = "Osilatörün tepe/dip aramasında kullanılan pencere. Fiyattakiyle aynı olmak zorunda değil — σ serisi genelde daha yumuşaktır, büyütmek gerekebilir.")
+zm_fib    = input.float(0.33, "Kırılım onayı (fib faktörü)", minval = 0.0, maxval = 1.0, step = 0.01, group = grpZM,
+     tooltip = "Yeni dip/zirve, önceki bacağın bu oranı kadar aşılmadan kırılım sayılmaz. Büyütürsen daha az ama daha güvenilir kırılım.")
+zm_sol    = input.int(0, "Sola uzat (bar)", minval = 0, maxval = 500, group = grpZM)
+zm_sag    = input.int(0, "Sağa uzat (bar)", minval = 0, maxval = 500, group = grpZM)
+zm_uzatStr= input.string("Sağa", "Sonsuz uzatma", options = ["Yok","Sağa","Sola","Her iki yön"], group = grpZM,
+     tooltip = "Kırılan σ seviyesini ileride destek/direnç olarak izlemek için 'Sağa' en kullanışlısı.")
+zm_kal    = input.int(2, "Çizgi kalınlığı", minval = 1, maxval = 6, group = grpZM)
+zm_stilStr= input.string("Düz", "Çizgi stili", options = ["Düz","Kesikli","Noktalı"], group = grpZM)
+zm_bullCol= input.color(#26a69a, "Yukarı kırılım rengi", group = grpZM)
+zm_bearCol= input.color(#ef5350, "Aşağı kırılım rengi",  group = grpZM)
+zm_adet   = input.int(12, "Ekranda tutulacak çizgi sayısı", minval = 1, maxval = 200, group = grpZM)
+zm_etiket = input.bool(true, "MSB etiketi göster", group = grpZM)
+zm_etSz   = input.string("Küçük", "Etiket boyutu", options = ["Çok küçük","Küçük","Normal"], group = grpZM)
+
+zm_uzat = zm_uzatStr == "Yok" ? extend.none : zm_uzatStr == "Sağa" ? extend.right : zm_uzatStr == "Sola" ? extend.left : extend.both
+zm_stil = zm_stilStr == "Düz" ? line.style_solid : zm_stilStr == "Kesikli" ? line.style_dashed : line.style_dotted
+zm_sz   = zm_etSz == "Çok küçük" ? size.tiny : zm_etSz == "Küçük" ? size.small : size.normal
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 1: PİVOT SEVİYELERİ AYARLARI
+// ═══════════════════════════════════════════════════════════════════════════
+grpPivot = "🔷📐🔷📐🔷 PİVOT · SEVİYELER 🔷📐🔷📐🔷"
+pivot1   = input.bool(true, "Pivot 1", inline = "1", group = grpPivot) and not sade
+len1     = input.int(15,   "",        inline = "1", group = grpPivot)
+style1   = input.string("--", "Stil:", ["--", "-", ".."], inline = "1", group = grpPivot)
+extendM1 = input.string("Both", "Uzatma:", ["Both", "Right"], inline = "1", group = grpPivot) == "Both"
+
+pivot2   = input.bool(true, "Pivot 2", inline = "2", group = grpPivot) and not sade
+len2     = input.int(25,   "",        inline = "2", group = grpPivot)
+style2   = input.string("-", "Stil:", ["--", "-", ".."], inline = "2", group = grpPivot)
+extendM2 = input.string("Both", "Uzatma:", ["Both", "Right"], inline = "2", group = grpPivot) == "Both"
+
+pivot3   = input.bool(true, "Pivot 3", inline = "3", group = grpPivot) and not sade
+len3     = input.int(50,   "",        inline = "3", group = grpPivot)
+style3   = input.string("-", "Stil:", ["--", "-", ".."], inline = "3", group = grpPivot)
+extendM3 = input.string("Both", "Uzatma:", ["Both", "Right"], inline = "3", group = grpPivot) == "Both"
+
+pivot4   = input.bool(true, "Pivot 4", inline = "4", group = grpPivot) and not sade
+len4     = input.int(100,  "",        inline = "4", group = grpPivot)
+style4   = input.string("-", "Stil:", ["--", "-", ".."], inline = "4", group = grpPivot)
+extendM4 = input.string("Both", "Uzatma:", ["Both", "Right"], inline = "4", group = grpPivot) == "Both"
+
+colorSup    = input.color(color.rgb(30, 214, 125), "Destek",  inline = "renkler", group = grpPivot)
+colorRes    = input.color(#eb7c14,                 "Direnç",  inline = "renkler", group = grpPivot)
+colorActive = input.color(color.rgb(27, 133, 255), "Aktif",   inline = "renkler", group = grpPivot)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 2: HAREKETLİ ORTALAMA (MA) AYARLARI
+//
+// NOT: "MA" ile "SMA" aynı hesaplamadır (ta.sma). "MA" yalnızca genel addır;
+//      TradingView'in yerleşik göstergelerinde de varsayılan olarak SMA'dır.
+//      İkisi de listede tutuluyor ki eski kayıtlı ayarlar bozulmasın.
+// ═══════════════════════════════════════════════════════════════════════════
+grpMA = "📈🟢📈🟢📈 HAREKETLİ ORTALAMA (MA / EMA) 📈🟢📈🟢📈"
+
+// DEMA/TEMA çok satırlı olduğu için switch dışında tanımlanır
+f_dema(source, length) =>
+    e1 = ta.ema(source, length)
+    e2 = ta.ema(e1,     length)
+    2 * e1 - e2
+
+f_tema(source, length) =>
+    e1 = ta.ema(source, length)
+    e2 = ta.ema(e1,     length)
+    e3 = ta.ema(e2,     length)
+    3 * (e1 - e2) + e3
+
+ma(source, length, MAtype) =>
+    switch MAtype
+        "MA"         => ta.sma(source,  length)   // düz hareketli ortalama = SMA
+        "SMA"        => ta.sma(source,  length)
+        "EMA"        => ta.ema(source,  length)
+        "SMMA (RMA)" => ta.rma(source,  length)
+        "WMA"        => ta.wma(source,  length)
+        "VWMA"       => ta.vwma(source, length)
+        "HMA"        => ta.hma(source,  length)
+        "DEMA"       => f_dema(source,  length)
+        "TEMA"       => f_tema(source,  length)
+        "ALMA"       => ta.alma(source, length, 0.85, 6)
+        "LSMA"       => ta.linreg(source, length, 0)
+        => na
+
+show_ma1   = input.bool(false,       "MA #1", inline = "MA1", group = grpMA)
+ma1_type   = input.string("MA",      "",      inline = "MA1", group = grpMA, options = ["MA", "SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA", "HMA", "DEMA", "TEMA", "ALMA", "LSMA"])
+ma1_length = input.int(20, minval=1, title="", inline = "MA1", group = grpMA)
+ma1_source = input.source(close,     "",      inline = "MA1", group = grpMA)
+ma1_col    = input.color(#f6c309,    "",      inline = "MA1", group = grpMA)
+
+show_ma2   = input.bool(false,       "MA #2", inline = "MA2", group = grpMA)
+ma2_type   = input.string("MA",      "",      inline = "MA2", group = grpMA, options = ["MA", "SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA", "HMA", "DEMA", "TEMA", "ALMA", "LSMA"])
+ma2_length = input.int(50, minval=1, title="", inline = "MA2", group = grpMA)
+ma2_source = input.source(close,     "",      inline = "MA2", group = grpMA)
+ma2_col    = input.color(#fb9800,    "",      inline = "MA2", group = grpMA)
+
+show_ma3   = input.bool(false,       "MA #3", inline = "MA3", group = grpMA)
+ma3_type   = input.string("MA",      "",      inline = "MA3", group = grpMA, options = ["MA", "SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA", "HMA", "DEMA", "TEMA", "ALMA", "LSMA"])
+ma3_length = input.int(100, minval=1, title="", inline = "MA3", group = grpMA)
+ma3_source = input.source(close,     "",      inline = "MA3", group = grpMA)
+ma3_col    = input.color(#2196f3,    "",      inline = "MA3", group = grpMA)
+
+show_ma4   = input.bool(false,       "MA #4", inline = "MA4", group = grpMA)
+ma4_type   = input.string("MA",      "",      inline = "MA4", group = grpMA, options = ["MA", "SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA", "HMA", "DEMA", "TEMA", "ALMA", "LSMA"])
+ma4_length = input.int(200, minval=1, title="", inline = "MA4", group = grpMA)
+ma4_source = input.source(close,     "",      inline = "MA4", group = grpMA)
+ma4_col    = input.color(#f60c0c,    "",      inline = "MA4", group = grpMA)
+
+ma_kal = input.int(2, "Çizgi kalınlığı", minval = 1, maxval = 5, group = grpMA)
+
+// ── HESAPLAMA (TradingView "Zaman aralığı" davranışı) ──────────────────────
+ma_tfStr   = input.timeframe("", "Zaman aralığı", group = grpMA,
+     tooltip = "Boş = grafiğin kendi zaman aralığı. 4 saatlik grafikte '1 hafta' seçersen haftalık MA hesaplanır ve son muma kadar çizilir.")
+ma_bekle   = input.bool(false, "Zaman aralığının kapanmasını bekleyin", group = grpMA,
+     tooltip = "Kapalı: haftalık grafikle birebir aynı çizgi. Açık: repaint yok ama çizgi bir bar geride kalır.")
+ma_yumusat = input.bool(false, "Basamakları yumuşat", group = grpMA,
+     tooltip = "Üst zaman dilimi değeri alt grafikte basamaklı görünür. Açıkken oran kadar SMA uygulanıp düzleştirilir; hafif gecikme getirir.")
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 3: BOLLINGER S/R AYARLARI
+// ═══════════════════════════════════════════════════════════════════════════
+grpBollMain = "🟣📊🟣📊🟣 BOLLINGER S/R 🟣📊🟣📊🟣"
+showBoll      = input.bool(true,  "BOLL S/R Göster",          group = grpBollMain) and not sade
+bollLen       = input.int(25,     "BOLL Periyodu", minval=5,  group = grpBollMain)
+bollMult      = input.float(1.9,  "BOLL Çarpanı", minval=0.5, step=0.1, group = grpBollMain)
+bollResColor  = input.color(color.orange, "BOLL Üst (Direnç) Rengi", group = grpBollMain)
+bollSupColor  = input.color(color.purple, "BOLL Alt (Destek) Rengi", group = grpBollMain)
+bollLineW     = input.int(5,      "Ana Çizgi Kalınlığı", minval=1, maxval=8, group = grpBollMain)
+showMB        = input.bool(false, "Orta Bant (MB) Göster",    group = grpBollMain)
+
+grpBollInner = "🟪📐🟪📐🟪 BOLLINGER · İÇ SEVİYELER 🟪📐🟪📐🟪"
+showInner    = input.bool(false, "İç Seviyeleri Göster", group = grpBollInner)
+innerPct1    = input.float(1.2,  "İç Seviye 1 (%)", minval=0.0, step=0.1, group = grpBollInner)
+innerPct2    = input.float(1.5,  "İç Seviye 2 (%)", minval=0.0, step=0.1, group = grpBollInner)
+innerPct3    = input.float(2.0,  "İç Seviye 3 (%)", minval=0.0, step=0.1, group = grpBollInner)
+innerPct4    = input.float(0.0,  "İç Seviye 4 (% — 0=kapalı)", minval=0.0, step=0.1, group = grpBollInner)
+innerResColor = input.color(color.new(color.orange, 40), "İç Direnç Rengi", group = grpBollInner)
+innerSupColor = input.color(color.new(color.purple, 40), "İç Destek Rengi", group = grpBollInner)
+innerLineW    = input.int(1,     "İç Çizgi Kalınlığı", minval=1, maxval=4, group = grpBollInner)
+innerStyleStr = input.string("Kesikli", "İç Çizgi Stili", options=["Düz","Kesikli","Noktalı"], group = grpBollInner)
+showBollLabel = input.bool(false, "BOLL Etiketleri Göster", group = grpBollInner)
+
+innerStyle = innerStyleStr == "Düz" ? line.style_solid : innerStyleStr == "Kesikli" ? line.style_dashed : line.style_dotted
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 3B: BOLLINGER SRL — DESTEK / DİRENÇ ÇİZGİLERİ
+//
+// Binance'in SRL(3,3) göstergesiyle aynı mantık: BOLL20 orta bandından
+// eşit σ adımlarıyla yukarı doğru direnç, aşağı doğru destek çizgileri.
+//   Direnç i. çizgi = orta bant + (mult + (i-1) × adım) × σ
+//   Destek  i. çizgi = orta bant − (mult + (i-1) × adım) × σ
+// Yani en içteki çift klasik Bollinger bandıdır; dışarıdakiler yarımşar
+// sapma ekler. Çizgiler yataydır ve son bardaki değere sabitlenir.
+// ═══════════════════════════════════════════════════════════════════════════
+grpSRL = "🟠🟣🟠🟣🟠 BOLLINGER SRL · DESTEK-DİRENÇ 🟠🟣🟠🟣🟠"
+srl_on    = input.bool(true, "SRL çizgilerini göster", group = grpSRL) and not sade
+srl_len   = input.int(20, "BOLL periyodu", minval = 2, maxval = 200, group = grpSRL,
+     tooltip = "Binance SRL'de 20 kullanılır. Yukarıdaki BOLL S/R modülünden bağımsızdır.")
+srl_mult  = input.float(2.0, "İlk çizginin sapması (σ)", minval = 0.5, maxval = 6.0, step = 0.1, group = grpSRL,
+     tooltip = "En içteki destek/direnç çifti. 2.0 klasik Bollinger bandıdır.")
+srl_step  = input.float(0.5, "Çizgiler arası adım (σ)", minval = 0.1, maxval = 3.0, step = 0.1, group = grpSRL,
+     tooltip = "Her ek çizgi bu kadar sapma dışarı konur. Binance SRL'de 0.5'tir.")
+srl_nRes  = input.int(3, "Direnç çizgisi sayısı", minval = 0, maxval = 5, inline = "srlN", group = grpSRL)
+srl_nSup  = input.int(3, "Destek çizgisi sayısı",  minval = 0, maxval = 5, inline = "srlN", group = grpSRL)
+srl_resCol= input.color(#f0b90b, "Direnç rengi", inline = "srlC", group = grpSRL)
+srl_supCol= input.color(#bb2fe0, "Destek rengi", inline = "srlC", group = grpSRL)
+srl_w     = input.int(1, "Çizgi kalınlığı", minval = 1, maxval = 4, group = grpSRL)
+srl_lbl   = input.bool(true, "Fiyat etiketi göster", group = grpSRL)
+srl_lblSz = input.string("Küçük", "Etiket boyutu", options = ["Çok küçük","Küçük","Normal"], group = grpSRL)
+srl_sol   = input.int(60, "Sola uzunluk (bar)", minval = 5, maxval = 500, group = grpSRL,
+     tooltip = "Çizgi sağa sonsuz uzar; bu değer sol ucun kaç bar geriden başlayacağını belirler.")
+
+srl_fill   = input.bool(false, "Çizgiler arasını doldur", group = grpSRL)
+srl_fillTr = input.int(90, "Dolgu şeffaflığı (0 = koyu, 100 = görünmez)", minval = 50, maxval = 100, group = grpSRL)
+srl_fillMid= input.bool(false, "Destek–direnç arası orta bölgeyi de doldur", group = grpSRL,
+     tooltip = "En içteki direnç ile en içteki destek arasındaki geniş bandı boyar. Mumların üstünü kapatabilir, şeffaflığı yüksek tutun.")
+srl_midCol = input.color(#787b86, "Orta bölge rengi", group = grpSRL)
+
+srl_sz = srl_lblSz == "Çok küçük" ? size.tiny : srl_lblSz == "Küçük" ? size.small : size.normal
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 4: FVPR + POC AYARLARI
+// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 4B: EMİR BLOĞU (LuxAlgo) AYARLARI
+// ═══════════════════════════════════════════════════════════════════════════
+grpOB = "🟧🧱🟧🧱🟧 EMİR BLOKLARI (LuxAlgo) 🟧🧱🟧🧱🟧"
+showOB     = input.bool(true, "Emir Bloğu Modülünü Aç", group = grpOB) and not sade
+obLength   = input.int(5, "Hacim Pivot Uzunluğu", minval = 1, group = grpOB)
+
+obBullExt  = input.int(3, "Yükseliş OB Sayısı", minval = 1, inline = "obBull", group = grpOB)
+obBgBull   = input.color(color.new(#169400, 80), "", inline = "obBull", group = grpOB)
+obBullCss  = input.color(#169400, "", inline = "obBull", group = grpOB)
+obBullAvg  = input.color(color.new(#9598a1, 37), "", inline = "obBull", group = grpOB)
+
+obBearExt  = input.int(3, "Düşüş OB Sayısı", minval = 1, inline = "obBear", group = grpOB)
+obBgBear   = input.color(color.new(#ff1100, 80), "", inline = "obBear", group = grpOB)
+obBearCss  = input.color(#ff1100, "", inline = "obBear", group = grpOB)
+obBearAvg  = input.color(color.new(#9598a1, 37), "", inline = "obBear", group = grpOB)
+
+obLineStyle = input.string("⎯⎯⎯", "Ortalama Çizgi Stili", options = ["⎯⎯⎯", "----", "····"], group = grpOB)
+obLineWidth = input.int(33, "Ortalama Çizgi Kalınlığı", minval = 1, group = grpOB)
+obMitigation = input.string("Kapanış", "Geçersiz Kılma Yöntemi", options = ["Fitil", "Kapanış"], group = grpOB)
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 5: PİVOT VERİ YAPISI
+// ═══════════════════════════════════════════════════════════════════════════
+type PivotLevel
+    int    length
+    float  levelH
+    float  levelL
+    bool   display
+    string style
+    int    startH
+    int    startL
+    bool   extend
+    float  volH
+    float  volL
+
+var Lines  = array.new<line>()
+var Labels = array.new<label>()
+
+ph1 = ta.pivothigh(len1, len1)
+pl1 = ta.pivotlow(len1, len1)
+ph2 = ta.pivothigh(len2, len2)
+pl2 = ta.pivotlow(len2, len2)
+ph3 = ta.pivothigh(len3, len3)
+pl3 = ta.pivotlow(len3, len3)
+ph4 = ta.pivothigh(len4, len4)
+pl4 = ta.pivotlow(len4, len4)
+
+atr = ta.atr(200) * 1.5
+
+array<PivotLevel> Levels = array.from(
+     PivotLevel.new(len1, ta.valuewhen(not na(ph1), high[len1], 0), ta.valuewhen(not na(pl1), low[len1], 0), pivot1, style1, ta.valuewhen(not na(ph1), bar_index[len1], 0), ta.valuewhen(not na(pl1), bar_index[len1], 0), extendM1, ta.valuewhen(not na(ph1), math.sum(volume, len1*2), 0), ta.valuewhen(not na(pl1), math.sum(volume, len1*2), 0)),
+     PivotLevel.new(len2, ta.valuewhen(not na(ph2), high[len2], 0), ta.valuewhen(not na(pl2), low[len2], 0), pivot2, style2, ta.valuewhen(not na(ph2), bar_index[len2], 0), ta.valuewhen(not na(pl2), bar_index[len2], 0), extendM2, ta.valuewhen(not na(ph2), math.sum(volume, len2*2), 0), ta.valuewhen(not na(pl2), math.sum(volume, len2*2), 0)),
+     PivotLevel.new(len3, ta.valuewhen(not na(ph3), high[len3], 0), ta.valuewhen(not na(pl3), low[len3], 0), pivot3, style3, ta.valuewhen(not na(ph3), bar_index[len3], 0), ta.valuewhen(not na(pl3), bar_index[len3], 0), extendM3, ta.valuewhen(not na(ph3), math.sum(volume, len3*2), 0), ta.valuewhen(not na(pl3), math.sum(volume, len3*2), 0)),
+     PivotLevel.new(len4, ta.valuewhen(not na(ph4), high[len4], 0), ta.valuewhen(not na(pl4), low[len4], 0), pivot4, style4, ta.valuewhen(not na(ph4), bar_index[len4], 0), ta.valuewhen(not na(pl4), bar_index[len4], 0), extendM4, ta.valuewhen(not na(ph4), math.sum(volume, len4*2), 0), ta.valuewhen(not na(pl4), math.sum(volume, len4*2), 0))
+ )
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 6: PİVOT ÇİZİM FONKSİYONU   (force_overlay: fiyat paneline)
+// ═══════════════════════════════════════════════════════════════════════════
+drawLevel(H, L, len, style_, startH, startL, extendM, volH, volL, tot) =>
+    if barstate.islast
+        style = style_ == "--" ? line.style_dashed
+             : style_ == "-"  ? line.style_solid
+             : style_ == ".." ? line.style_dotted
+             : line.style_solid
+
+        width1 = len == len1 ? 1 : len == len2 ? 2  : len == len3 ? 3  : 4
+        width2 = len == len1 ? 3 : len == len2 ? 7  : len == len3 ? 10 : 15
+
+        color1 = low  > H + atr ? colorSup : high < H - atr ? colorRes : colorActive
+        color2 = low  > L + atr ? colorSup : high < L - atr ? colorRes : colorActive
+
+        extnd = extendM ? extend.both : extend.right
+
+        Lines.push(line.new(startH, H, bar_index, H, color = color1, extend = extnd, style = style, width = width1, force_overlay = true))
+        Lines.push(line.new(startL, L, bar_index, L, color = color2, extend = extnd, style = style, width = width1, force_overlay = true))
+        Lines.push(line.new(startH, H, bar_index, H, color = color.new(color1, 80), extend = extnd, width = width2, force_overlay = true))
+        Lines.push(line.new(startL, L, bar_index, L, color = color.new(color2, 80), extend = extnd, width = width2, force_overlay = true))
+
+        Labels.push(label.new(bar_index + 15, H, str.tostring(H, format.mintick) + " | " + str.tostring(volH, format.volume) + " | " + str.tostring(volH/tot*100, format.percent)
+                    , textcolor = color1, color = chart.bg_color, style = label.style_label_center
+                    , tooltip = "Fiyat | Hacim | Hacim Dağılım %", force_overlay = true))
+
+        Labels.push(label.new(bar_index + 15, L, str.tostring(L, format.mintick) + " | " + str.tostring(volL, format.volume) + " | " + str.tostring(volL/tot*100, format.percent)
+                    , textcolor = color2, color = chart.bg_color, style = label.style_label_center
+                    , tooltip = "Fiyat | Hacim | Hacim Dağılım %", force_overlay = true))
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 7: BOLL ÇİZİM FONKSİYONU
+// ═══════════════════════════════════════════════════════════════════════════
+drawBollSR(lvl, col, sty, wid, txt) =>
+    ln = line.new(bar_index - 50, lvl, bar_index + 5, lvl,
+                  color=col, style=sty, width=wid, extend=extend.both, force_overlay = true)
+    array.push(Lines, ln)
+    if showBollLabel
+        lbl = label.new(bar_index + 5, lvl, txt,
+                        color=color.new(col, 70), textcolor=col,
+                        style=label.style_label_left, size=size.small, force_overlay = true)
+        array.push(Labels, lbl)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 8: BOLLINGER HESAPLA
+// ═══════════════════════════════════════════════════════════════════════════
+bollBasis = ta.sma(close, bollLen)
+bollDev   = bollMult * ta.stdev(close, bollLen)
+bollUpper = bollBasis + bollDev
+bollLower = bollBasis - bollDev
+
+// SRL kendi periyodunu kullanır (BOLL S/R modülünden bağımsız)
+srlBasis = ta.sma(close, srl_len)
+srlSigma = ta.stdev(close, srl_len)
+
+// Tek bir SRL çizgisi + isteğe bağlı fiyat etiketi
+var srlBoxes = array.new<box>()
+
+// İki seviye arasını boyar (fibo dolgusuyla aynı mantık)
+drawSRLFill(float a, float b, color col) =>
+    bx = box.new(bar_index - srl_sol, math.max(a, b), bar_index, math.min(a, b),
+                 border_color = color.new(color.black, 100),
+                 bgcolor = color.new(col, srl_fillTr),
+                 extend = extend.right, force_overlay = true)
+    array.push(srlBoxes, bx)
+
+drawSRL(float lvl, color col) =>
+    ln = line.new(bar_index - srl_sol, lvl, bar_index, lvl,
+                  color = col, style = line.style_solid, width = srl_w,
+                  extend = extend.right, force_overlay = true)
+    array.push(Lines, ln)
+    if srl_lbl
+        lb = label.new(bar_index + 3, lvl, str.tostring(lvl, format.mintick),
+                       color = color.new(col, 80), textcolor = col,
+                       style = label.style_label_left, size = srl_sz, force_overlay = true)
+        array.push(Labels, lb)
+
+// (FVPR motoru · BÖLÜM 9-13 kaldırıldı)
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 14: PİVOT ÇİZİMLERİ (son barda)
+// ═══════════════════════════════════════════════════════════════════════════
+if barstate.islast
+    for l in Lines
+        l.delete()
+    for l in Labels
+        l.delete()
+    for b in srlBoxes
+        b.delete()
+    Lines.clear()
+    Labels.clear()
+    srlBoxes.clear()
+
+    tot = 0.
+    for l in Levels
+        if l.display
+            tot += l.volH + l.volL
+    for l in Levels
+        if l.display
+            drawLevel(l.levelH, l.levelL, l.length, l.style, l.startH, l.startL, l.extend, l.volH, l.volL, tot)
+
+    if showBoll
+        drawBollSR(bollUpper, bollResColor, line.style_solid, bollLineW, "UB: " + str.tostring(bollUpper, format.mintick))
+        drawBollSR(bollLower, bollSupColor, line.style_solid, bollLineW, "LB: " + str.tostring(bollLower, format.mintick))
+        if showMB
+            drawBollSR(bollBasis, color.new(color.gray, 30), line.style_dashed, 1, "MB: " + str.tostring(bollBasis, format.mintick))
+
+    if srl_on and not na(srlBasis) and not na(srlSigma) and srlSigma > 0
+        srlRes = array.new_float()
+        srlSup = array.new_float()
+        if srl_nRes > 0
+            for i = 0 to srl_nRes - 1
+                array.push(srlRes, srlBasis + (srl_mult + i * srl_step) * srlSigma)
+        if srl_nSup > 0
+            for i = 0 to srl_nSup - 1
+                array.push(srlSup, srlBasis - (srl_mult + i * srl_step) * srlSigma)
+
+        // Dolgular önce çizilir ki çizgiler üstte kalsın
+        if srl_fill
+            if array.size(srlRes) > 1
+                for i = 0 to array.size(srlRes) - 2
+                    drawSRLFill(array.get(srlRes, i), array.get(srlRes, i + 1), srl_resCol)
+            if array.size(srlSup) > 1
+                for i = 0 to array.size(srlSup) - 2
+                    drawSRLFill(array.get(srlSup, i), array.get(srlSup, i + 1), srl_supCol)
+            if srl_fillMid and array.size(srlRes) > 0 and array.size(srlSup) > 0
+                drawSRLFill(array.get(srlRes, 0), array.get(srlSup, 0), srl_midCol)
+
+        if array.size(srlRes) > 0
+            for i = 0 to array.size(srlRes) - 1
+                drawSRL(array.get(srlRes, i), srl_resCol)
+        if array.size(srlSup) > 0
+            for i = 0 to array.size(srlSup) - 1
+                drawSRL(array.get(srlSup, i), srl_supCol)
+
+    if showBoll and showInner
+        if innerPct1 > 0
+            lvl1r = bollUpper * (1 - innerPct1 / 100)
+            drawBollSR(lvl1r, innerResColor, innerStyle, innerLineW, "R1 (-" + str.tostring(innerPct1, "#.##") + "%): " + str.tostring(lvl1r, format.mintick))
+        if innerPct2 > 0
+            lvl2r = bollUpper * (1 - innerPct2 / 100)
+            drawBollSR(lvl2r, innerResColor, innerStyle, innerLineW, "R2 (-" + str.tostring(innerPct2, "#.##") + "%): " + str.tostring(lvl2r, format.mintick))
+        if innerPct3 > 0
+            lvl3r = bollUpper * (1 - innerPct3 / 100)
+            drawBollSR(lvl3r, innerResColor, innerStyle, innerLineW, "R3 (-" + str.tostring(innerPct3, "#.##") + "%): " + str.tostring(lvl3r, format.mintick))
+        if innerPct4 > 0
+            lvl4r = bollUpper * (1 - innerPct4 / 100)
+            drawBollSR(lvl4r, innerResColor, innerStyle, innerLineW, "R4 (-" + str.tostring(innerPct4, "#.##") + "%): " + str.tostring(lvl4r, format.mintick))
+        if innerPct1 > 0
+            lvl1s = bollLower * (1 + innerPct1 / 100)
+            drawBollSR(lvl1s, innerSupColor, innerStyle, innerLineW, "S1 (+" + str.tostring(innerPct1, "#.##") + "%): " + str.tostring(lvl1s, format.mintick))
+        if innerPct2 > 0
+            lvl2s = bollLower * (1 + innerPct2 / 100)
+            drawBollSR(lvl2s, innerSupColor, innerStyle, innerLineW, "S2 (+" + str.tostring(innerPct2, "#.##") + "%): " + str.tostring(lvl2s, format.mintick))
+        if innerPct3 > 0
+            lvl3s = bollLower * (1 + innerPct3 / 100)
+            drawBollSR(lvl3s, innerSupColor, innerStyle, innerLineW, "S3 (+" + str.tostring(innerPct3, "#.##") + "%): " + str.tostring(lvl3s, format.mintick))
+        if innerPct4 > 0
+            lvl4s = bollLower * (1 + innerPct4 / 100)
+            drawBollSR(lvl4s, innerSupColor, innerStyle, innerLineW, "S4 (+" + str.tostring(innerPct4, "#.##") + "%): " + str.tostring(lvl4s, format.mintick))
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 15: MA HESAPLA VE ÇİZ  (üst zaman dilimi + renk/kalınlık girdileri)
+//
+// BAĞIMLILIK (BÖLÜM 2'de tanımlı olmalı):
+//   show_ma1..4 · ma1..4_type · ma1..4_length · ma1..4_source
+//   ma1..4_col  · ma_kal · ma_tfStr · ma_bekle · ma_yumusat · ma() fonksiyonu
+//
+// İKİ request.security ÇAĞRISI — `lookahead` argümanı sabit (const) olmak
+// zorundadır, toggle ile değiştirilemez. Bu yüzden iki sürüm alınır:
+//   • ma_bekle = true  → lookahead_on + [1] : son KAPANMIŞ üst bar.
+//                        Repaint yok, ama çizgi üst zaman dilimindeki
+//                        grafikten bir bar geride kalır (basamaklı görünür).
+//   • ma_bekle = false → lookahead_on       : üst barın KENDİ değeri.
+//                        Haftalık grafikteki çizginin birebir aynısı; buna
+//                        karşılık geçmiş barlarda o haftanın SONUÇ değerini
+//                        gösterir. Göz kararı seviye takibi için doğrudur,
+//                        ALARM/STRATEJİ koşulunda KULLANILMAZ.
+//
+// gaps_off olduğu için değer her alt barda doludur → çizgi son muma kadar gider.
+// force_overlay = true → çizimler fiyat paneline itilir (script overlay=false).
+// ═══════════════════════════════════════════════════════════════════════════
+ma_res   = ma_tfStr == "" ? timeframe.period : ma_tfStr
+ma_secC  = timeframe.in_seconds(timeframe.period)
+ma_secH  = timeframe.in_seconds(ma_res)
+ma_htfOn = ma_secH > ma_secC                       // alt/eşit seçilirse grafik TF'i kullanılır
+ma_oran  = int(math.max(1, math.round(ma_secH / ma_secC)))
+
+// ── Yerel (grafik zaman dilimi) hesaplar ───────────────────────────────────
+ma1r = ma(ma1_source, ma1_length, ma1_type)
+ma2r = ma(ma2_source, ma2_length, ma2_type)
+ma3r = ma(ma3_source, ma3_length, ma3_type)
+ma4r = ma(ma4_source, ma4_length, ma4_type)
+
+// ── Üst zaman dilimi değerleri (dörtlü demet → tek çağrı) ──────────────────
+[w1, w2, w3, w4] = request.security(syminfo.tickerid, ma_res, [ma1r[1], ma2r[1], ma3r[1], ma4r[1]],
+                                    barmerge.gaps_off, barmerge.lookahead_on)
+[c1, c2, c3, c4] = request.security(syminfo.tickerid, ma_res, [ma1r, ma2r, ma3r, ma4r],
+                                    barmerge.gaps_off, barmerge.lookahead_on)
+
+// ── Seçim + isteğe bağlı yumuşatma ─────────────────────────────────────────
+// NOT: ta.sma() her barda çalışmalıdır (koşul içinde çağrılırsa iç durumu
+//      bozulur — CW10002). Bu yüzden önce hesaplanır, sonra seçilir.
+ma_sec(float _yerel, float _bekleyen, float _anlik) =>
+    ham = not ma_htfOn ? _yerel : ma_bekle ? _bekleyen : _anlik
+    yum = ta.sma(ham, ma_oran)
+    ma_htfOn and ma_yumusat ? yum : ham
+
+ma1f = ma_sec(ma1r, w1, c1)
+ma2f = ma_sec(ma2r, w2, c2)
+ma3f = ma_sec(ma3r, w3, c3)
+ma4f = ma_sec(ma4r, w4, c4)
+
+// ── Çizim ──────────────────────────────────────────────────────────────────
+plot(show_ma1 ? ma1f : na, "MA #1", color = ma1_col, linewidth = ma_kal, force_overlay = true)
+plot(show_ma2 ? ma2f : na, "MA #2", color = ma2_col, linewidth = ma_kal, force_overlay = true)
+plot(show_ma3 ? ma3f : na, "MA #3", color = ma3_col, linewidth = ma_kal, force_overlay = true)
+plot(show_ma4 ? ma4f : na, "MA #4", color = ma4_col, linewidth = ma_kal, force_overlay = true)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 16: BOLLINGER BANT EĞRİLERİ
+// ═══════════════════════════════════════════════════════════════════════════
+plot(showBoll ? bollUpper : na, "BOLL Üst",  color=color.new(color.orange, 75), linewidth=1, display=display.none, force_overlay=true)
+plot(showBoll and showMB ? bollBasis : na, "BOLL Orta", color=color.new(color.gray, 80), linewidth=1, display=display.none, force_overlay=true)
+plot(showBoll ? bollLower : na, "BOLL Alt",  color=color.new(color.purple, 75), linewidth=1, display=display.none, force_overlay=true)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 18: EMİR BLOKLARI (LuxAlgo) — © LuxAlgo (CC BY-NC-SA 4.0)
+// ═══════════════════════════════════════════════════════════════════════════
+get_line_style(style) =>
+    switch style
+        "⎯⎯⎯"  => line.style_solid
+        "----" => line.style_dashed
+        "····" => line.style_dotted
+        => line.style_solid
+
+get_coordinates(condition, top, btm, ob_val) =>
+    var ob_top  = array.new_float(0)
+    var ob_btm  = array.new_float(0)
+    var ob_avg  = array.new_float(0)
+    var ob_left = array.new_int(0)
+    float ob = na
+    if condition
+        avg = math.avg(top, btm)
+        ob_top.unshift(top)
+        ob_btm.unshift(btm)
+        ob_avg.unshift(avg)
+        ob_left.unshift(time[obLength])
+        ob := ob_val
+    [ob_top, ob_btm, ob_avg, ob_left, ob]
+
+remove_mitigated(ob_top, ob_btm, ob_left, ob_avg, target, bull) =>
+    mitigated = false
+    target_array = bull ? ob_btm : ob_top
+    for element in target_array
+        idx = target_array.indexof(element)
+        if (bull ? target < element : target > element)
+            mitigated := true
+            ob_top.remove(idx)
+            ob_btm.remove(idx)
+            ob_avg.remove(idx)
+            ob_left.remove(idx)
+    mitigated
+
+set_order_blocks(ob_top, ob_btm, ob_left, ob_avg, ext_last, bg_css, border_css, lvl_css) =>
+    var ob_box = array.new_box(0)
+    var ob_lvl = array.new_line(0)
+    if barstate.isfirst
+        for i = 0 to ext_last - 1
+            ob_box.unshift(box.new(na, na, na, na, xloc = xloc.bar_time, extend = extend.right,
+                                    bgcolor = bg_css, border_color = color.new(border_css, 70), force_overlay = true))
+            ob_lvl.unshift(line.new(na, na, na, na, xloc = xloc.bar_time, extend = extend.right,
+                                     color = lvl_css, style = get_line_style(obLineStyle), width = obLineWidth, force_overlay = true))
+    if barstate.islast
+        if ob_top.size() > 0
+            for i = 0 to math.min(ext_last - 1, ob_top.size() - 1)
+                get_box = ob_box.get(i)
+                get_lvl = ob_lvl.get(i)
+                box.set_lefttop(get_box, ob_left.get(i), ob_top.get(i))
+                box.set_rightbottom(get_box, ob_left.get(i), ob_btm.get(i))
+                line.set_xy1(get_lvl, ob_left.get(i), ob_avg.get(i))
+                line.set_xy2(get_lvl, ob_left.get(i) + 1, ob_avg.get(i))
+
+var int   obOs = 0
+var float obTargetBull = 0.0
+var float obTargetBear = 0.0
+
+obUpper = ta.highest(obLength)
+obLower = ta.lowest(obLength)
+
+if obMitigation == "Kapanış"
+    obTargetBull := ta.lowest(close, obLength)
+    obTargetBear := ta.highest(close, obLength)
+else
+    obTargetBull := obLower
+    obTargetBear := obUpper
+
+obOs := high[obLength] > obUpper ? 0 : low[obLength] < obLower ? 1 : obOs[1]
+
+obPhv = not na(ta.pivothigh(volume, obLength, obLength))
+
+[bull_top, bull_btm, bull_avg, bull_left, bull_ob] = get_coordinates(showOB and obPhv and obOs == 1, hl2[obLength], low[obLength],  low[obLength])
+[bear_top, bear_btm, bear_avg, bear_left, bear_ob] = get_coordinates(showOB and obPhv and obOs == 0, high[obLength], hl2[obLength], high[obLength])
+
+mitigated_bull = remove_mitigated(bull_top, bull_btm, bull_left, bull_avg, obTargetBull, true)
+mitigated_bear = remove_mitigated(bear_top, bear_btm, bear_left, bear_avg, obTargetBear, false)
+
+set_order_blocks(bull_top, bull_btm, bull_left, bull_avg, obBullExt, obBgBull, obBullCss, obBullAvg)
+set_order_blocks(bear_top, bear_btm, bear_left, bear_avg, obBearExt, obBgBear, obBearCss, obBearAvg)
+
+plot(showOB ? bull_ob : na, "Yükseliş OB", obBullCss, 2, plot.style_linebr, offset = -obLength, display = display.none, force_overlay = true)
+plot(showOB ? bear_ob : na, "Düşüş OB",    obBearCss, 2, plot.style_linebr, offset = -obLength, display = display.none, force_overlay = true)
+
+alertcondition(not na(bull_ob),  "Yükseliş OB Oluştu",          "Yükseliş emir bloğu tespit edildi")
+alertcondition(not na(bear_ob),  "Düşüş OB Oluştu",             "Düşüş emir bloğu tespit edildi")
+alertcondition(mitigated_bull,   "Yükseliş OB Geçersiz Kılındı","Yükseliş emir bloğu geçersiz kılındı")
+alertcondition(mitigated_bear,   "Düşüş OB Geçersiz Kılındı",   "Düşüş emir bloğu geçersiz kılındı")
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 19: MSB-OB (yapı kırılımı + OB / BB kutuları)
+//
+// v2 DEĞİŞİKLİKLERİ
+//   • Yapı (piyasa) HER ZAMAN hesaplanır → birleşik sinyal motoru kullanır.
+//     show_msb yalnızca ÇİZİMİ açar / kapatır.
+//   • Kutular indeksle, sondan başa gezilir → kırılan kutunun KENDİSİ silinir
+//     (eskiden array.shift ile en eski kutu siliniyordu).
+//   • Bölge alarmı yalnızca fiyat kutuya GİRDİĞİ barda bir kez çalışır.
+//   • MSB çizgisi / etiketi / kutuları adetle sınırlı → 500 çizim sınırı
+//     dolmaz, LuxAlgo OB çizimleri çöpe gitmez.
+// ═══════════════════════════════════════════════════════════════════════════
+var float[] yuksek_dizi   = array.new<float>(5)
+var int[]   yuksek_indeks = array.new<int>(5)
+var float[] dusuk_dizi    = array.new<float>(5)
+var int[]   dusuk_indeks  = array.new<int>(5)
+
+var box[]   bu_ob_kutular = array.new<box>(0)
+var box[]   be_ob_kutular = array.new<box>(0)
+var box[]   bu_bb_kutular = array.new<box>(0)
+var box[]   be_bb_kutular = array.new<box>(0)
+var box[]   msb_arsiv     = array.new<box>(0)     // kırılmış ama silinmemiş kutular
+var line[]  msb_L         = array.new<line>(0)
+var label[] msb_T         = array.new<label>(0)
+
+yukari_git = high >= ta.highest(zigzag_uzunluk)
+asagi_git  = low  <= ta.lowest(zigzag_uzunluk)
+
+var int msb_trend = 1
+msb_trend := msb_trend == 1 and asagi_git ? -1 : msb_trend == -1 and yukari_git ? 1 : msb_trend
+
+// ta.change() geçmişe bakan bir fonksiyondur; koşulun içinde çağrılırsa
+// iç durumu bozulur (CW10002). Bu yüzden her barda hesaplanıp global tutulur.
+msb_trendDeg = ta.change(msb_trend) != 0
+
+son_yukari_beri = ta.barssince(yukari_git[1])
+dusuk_deger     = ta.lowest(nz(son_yukari_beri > 0 ? son_yukari_beri : 1, 1))
+dusuk_bari      = bar_index - ta.barssince(dusuk_deger == low)
+
+son_asagi_beri  = ta.barssince(asagi_git[1])
+yuksek_deger    = ta.highest(nz(son_asagi_beri > 0 ? son_asagi_beri : 1, 1))
+yuksek_bari     = bar_index - ta.barssince(yuksek_deger == high)
+
+if msb_trendDeg
+    if msb_trend == 1
+        array.push(dusuk_dizi,   dusuk_deger)
+        array.push(dusuk_indeks, dusuk_bari)
+        if array.size(dusuk_dizi) > 20
+            array.shift(dusuk_dizi)
+            array.shift(dusuk_indeks)
+    if msb_trend == -1
+        array.push(yuksek_dizi,   yuksek_deger)
+        array.push(yuksek_indeks, yuksek_bari)
+        if array.size(yuksek_dizi) > 20
+            array.shift(yuksek_dizi)
+            array.shift(yuksek_indeks)
+
+f_yuksek_al(ind) =>
+    [array.get(yuksek_dizi,   array.size(yuksek_dizi)   - 1 - ind),
+     array.get(yuksek_indeks, array.size(yuksek_indeks) - 1 - ind)]
+
+f_dusuk_al(ind) =>
+    [array.get(dusuk_dizi,   array.size(dusuk_dizi)   - 1 - ind),
+     array.get(dusuk_indeks, array.size(dusuk_indeks) - 1 - ind)]
+
+// Kutuları yönetir: kırılan kutuyu (KENDİSİNİ) siler ya da dondurup arşivler,
+// kalanları sağa uzatır. Dönüş: fiyat bu türden en az bir kutunun İÇİNDE mi?
+//   yukselis = true  → destek kutusu (Bu-*): kapanış altına inerse kırılır
+//   yukselis = false → direnç kutusu (Be-*): kapanış üstüne çıkarsa kırılır
+f_kutu_yonet(box[] kutular, bool yukselis) =>
+    bool icinde = false
+    int  n      = array.size(kutular)
+    if n > 0
+        for i = n - 1 to 0
+            bx  = array.get(kutular, i)
+            ust = box.get_top(bx)
+            alt = box.get_bottom(bx)
+            kirildi = yukselis ? close < alt : close > ust
+            if not kirildi
+                box.set_right(bx, bar_index + 10)
+                icinde := icinde or (close <= ust and close >= alt)
+            if kirildi
+                array.remove(kutular, i)
+                if eski_kutulari_sil
+                    box.delete(bx)
+                else
+                    box.set_right(bx, bar_index)
+                    array.push(msb_arsiv, bx)
+                    if array.size(msb_arsiv) > 40
+                        box.delete(array.shift(msb_arsiv))
+    icinde
+
+[y0, y0i] = f_yuksek_al(0)
+[y1, y1i] = f_yuksek_al(1)
+[d0, d0i] = f_dusuk_al(0)
+[d1, d1i] = f_dusuk_al(1)
+
+var int piyasa = 1
+son_d0 = ta.valuewhen(ta.change(piyasa) != 0, d0, 0)
+son_y0 = ta.valuewhen(ta.change(piyasa) != 0, y0, 0)
+piyasa := son_d0 == d0 or son_y0 == y0 ? piyasa :
+     piyasa == 1  and d0 < d1 and d0 < d1 - math.abs(y0 - d1) * fib_faktoru ? -1 :
+     piyasa == -1 and y0 > y1 and y0 > y1 + math.abs(y1 - d0) * fib_faktoru ?  1 : piyasa
+
+// Aynı sebeple yapı kırılımı da global değişkende tutulur (CW10002).
+piyasaDeg = ta.change(piyasa) != 0
+
+var int bu_ob_indeks = bar_index
+for i = y1i to d0i[zigzag_uzunluk]
+    idx = bar_index - i
+    if open[idx] > close[idx]
+        bu_ob_indeks := bar_index[idx]
+bu_ob_sure = bar_index - bu_ob_indeks
+
+var int be_ob_indeks = bar_index
+for i = d1i to y0i[zigzag_uzunluk]
+    idx = bar_index - i
+    if open[idx] < close[idx]
+        be_ob_indeks := bar_index[idx]
+be_ob_sure = bar_index - be_ob_indeks
+
+var int be_bb_indeks = bar_index
+for i = y1i - zigzag_uzunluk to d1i
+    idx = bar_index - i
+    if open[idx] > close[idx]
+        be_bb_indeks := bar_index[idx]
+be_bb_sure = bar_index - be_bb_indeks
+
+var int bu_bb_indeks = bar_index
+for i = d1i - zigzag_uzunluk to y1i
+    idx = bar_index - i
+    if open[idx] < close[idx]
+        bu_bb_indeks := bar_index[idx]
+bu_bb_sure = bar_index - bu_bb_indeks
+
+if show_msb and piyasaDeg
+    if piyasa == 1
+        // msbc_on açıkken çizgiyi BÖLÜM 22 tek kat çizer (eskiden iki kat çiziliyordu)
+        if not msbc_on
+            array.push(msb_L, line.new(y1i, y1, y0i, y1, color=msbc_bullCol, width=2, force_overlay = true))
+        array.push(msb_T, label.new(int(math.avg(y1i, d0i)), y1, "MSB ▲",
+             color=color.new(color.black, 100), style=label.style_label_down,
+             textcolor=msbc_bullCol, size=size.small, force_overlay = true,
+             tooltip="Yükseliş yapı kırılımı\nKırılan tepe: " + str.tostring(y1, format.mintick) +
+                     "\nSon dip: " + str.tostring(d0, format.mintick)))
+        bu_ob = box.new(bu_ob_indeks, high[bu_ob_sure], bar_index + 10, low[bu_ob_sure],
+             bgcolor=bu_ob_renk, border_color=bu_ob_kenar,
+             text="Bu-OB", text_color=bu_ob_yazi,
+             text_halign=text.align_right, text_size=kutu_yazi_boyutu, force_overlay = true)
+        bu_bb_tipi = d0 < d1 ? "Bu-BB" : "Bu-MB"
+        bu_bb = box.new(bu_bb_indeks, high[bu_bb_sure], bar_index + 10, low[bu_bb_sure],
+             bgcolor=bu_bb_renk, border_color=bu_bb_kenar,
+             text=bu_bb_tipi, text_color=bu_bb_yazi,
+             text_halign=text.align_right, text_size=kutu_yazi_boyutu, force_overlay = true)
+        array.push(bu_ob_kutular, bu_ob)
+        array.push(bu_bb_kutular, bu_bb)
+    if piyasa == -1
+        if not msbc_on
+            array.push(msb_L, line.new(d1i, d1, d0i, d1, color=msbc_bearCol, width=2, force_overlay = true))
+        array.push(msb_T, label.new(int(math.avg(d1i, y0i)), d1, "MSB ▼",
+             color=color.new(color.black, 100), style=label.style_label_up,
+             textcolor=msbc_bearCol, size=size.small, force_overlay = true,
+             tooltip="Düşüş yapı kırılımı\nKırılan dip: " + str.tostring(d1, format.mintick) +
+                     "\nSon tepe: " + str.tostring(y0, format.mintick)))
+        be_ob = box.new(be_ob_indeks, high[be_ob_sure], bar_index + 10, low[be_ob_sure],
+             bgcolor=be_ob_renk, border_color=be_ob_kenar,
+             text="Be-OB", text_color=be_ob_yazi,
+             text_halign=text.align_right, text_size=kutu_yazi_boyutu, force_overlay = true)
+        be_bb_tipi = y0 > y1 ? "Be-BB" : "Be-MB"
+        be_bb = box.new(be_bb_indeks, high[be_bb_sure], bar_index + 10, low[be_bb_sure],
+             bgcolor=be_bb_renk, border_color=be_bb_kenar,
+             text=be_bb_tipi, text_color=be_bb_yazi,
+             text_halign=text.align_right, text_size=kutu_yazi_boyutu, force_overlay = true)
+        array.push(be_ob_kutular, be_ob)
+        array.push(be_bb_kutular, be_bb)
+
+    // ── Adet sınırları (en eskiler silinir) ──
+    while array.size(msb_L) > msbc_adet
+        line.delete(array.shift(msb_L))
+    while array.size(msb_T) > msbc_adet
+        label.delete(array.shift(msb_T))
+    while array.size(bu_ob_kutular) > msb_maxKutu
+        box.delete(array.shift(bu_ob_kutular))
+    while array.size(be_ob_kutular) > msb_maxKutu
+        box.delete(array.shift(be_ob_kutular))
+    while array.size(bu_bb_kutular) > msb_maxKutu
+        box.delete(array.shift(bu_bb_kutular))
+    while array.size(be_bb_kutular) > msb_maxKutu
+        box.delete(array.shift(be_bb_kutular))
+
+// ── Kutu takibi: kırılanı sil, kalanı uzat, fiyat içinde mi? ──────────────
+bool msb_buOBin = false
+bool msb_beOBin = false
+bool msb_buBBin = false
+bool msb_beBBin = false
+if show_msb
+    msb_buOBin := f_kutu_yonet(bu_ob_kutular, true)
+    msb_beOBin := f_kutu_yonet(be_ob_kutular, false)
+    msb_buBBin := f_kutu_yonet(bu_bb_kutular, true)
+    msb_beBBin := f_kutu_yonet(be_bb_kutular, false)
+
+// Bölgeye GİRİŞ anı (içindeyken her barda değil, yalnızca ilk barda)
+msb_buOBgir = msb_buOBin and not msb_buOBin[1]
+msb_beOBgir = msb_beOBin and not msb_beOBin[1]
+msb_buBBgir = msb_buBBin and not msb_buBBin[1]
+msb_beBBgir = msb_beBBin and not msb_beBBin[1]
+
+if sig_alertOn
+    if msb_buOBgir
+        alert(syminfo.ticker + " · Fiyat Bu-OB (destek) bölgesine girdi @ " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+    if msb_beOBgir
+        alert(syminfo.ticker + " · Fiyat Be-OB (direnç) bölgesine girdi @ " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+    if msb_buBBgir
+        alert(syminfo.ticker + " · Fiyat Bu-BB (destek) bölgesine girdi @ " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+    if msb_beBBgir
+        alert(syminfo.ticker + " · Fiyat Be-BB (direnç) bölgesine girdi @ " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+
+alertcondition(piyasaDeg,                  "MSB",          "Market Structure Break oluştu!")
+alertcondition(piyasaDeg and piyasa ==  1, "MSB Yükseliş", "Yükseliş MSB — fiyat yukarı kırdı!")
+alertcondition(piyasaDeg and piyasa == -1, "MSB Düşüş",    "Düşüş MSB — fiyat aşağı kırdı!")
+alertcondition(msb_buOBgir or msb_buBBgir, "MSB destek kutusuna giriş", "{{ticker}} fiyatı Bu-OB / Bu-BB (destek) bölgesine girdi @ {{close}}")
+alertcondition(msb_beOBgir or msb_beBBgir, "MSB direnç kutusuna giriş", "{{ticker}} fiyatı Be-OB / Be-BB (direnç) bölgesine girdi @ {{close}}")
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 20: ATH SEVİYELERİ (Günlük / Haftalık / Aylık / Yıllık — isimli)
+//
+// NOT 1: Yazılar varsayılan olarak label DEĞİL, box nesnesiyle çizilir; diğer
+//        modüllerin etiketlerini kapattığında ATH yazıları kalkmaz.
+// NOT 2: Tüm koordinatlar xloc.bar_time (zaman) ile verilir. bar_index ile
+//        10.000 bardan eski seviyeler "RE10026 / x1 too far" hatası veriyordu.
+// ═══════════════════════════════════════════════════════════════════════════
+grpATH = "⛰🔺⛰🔺⛰ ATH · SEVİYELER ⛰🔺⛰🔺⛰"
+ath_on      = input.bool(true, "ATH Modülünü Aç", group = grpATH) and not sade
+ath_txtMode = input.string("Kutu (etiket değil)", "Yazı tipi",
+     options = ["Kutu (etiket değil)", "Etiket (label)", "Yazı yok"], group = grpATH,
+     tooltip = "Kutu = yazı box nesnesiyle çizilir, label değildir; diğer indikatörlerin etiketlerini kapatınca bu kalkmaz.")
+ath_recOnly = input.bool(false, "Sadece rekor kıran seviyeler (ATH zinciri)", group = grpATH)
+ath_pos     = input.string("Sağda", "Yazı konumu", options = ["Sağda", "Oluştuğu yerde"], group = grpATH)
+ath_off     = input.int(5, "Sağ boşluk (bar)", minval=0, maxval=200, group = grpATH)
+ath_wid     = input.int(25, "Kutu yazı genişliği (bar)", minval=5, maxval=200, group = grpATH)
+ath_showVal = input.bool(true, "Yazıda fiyat da görünsün", group = grpATH)
+ath_lw      = input.int(1, "Çizgi kalınlığı", minval=1, maxval=4, group = grpATH)
+ath_styStr  = input.string("Düz", "Çizgi stili", options = ["Düz","Kesikli","Noktalı"], group = grpATH)
+ath_szStr   = input.string("Normal", "Yazı boyutu", options = ["Çok küçük","Küçük","Normal"], group = grpATH)
+
+ath_sY = input.bool(true,  "Yıllık",   group = grpATH, inline="athy")
+ath_nY = input.int(4, "Adet",          group = grpATH, inline="athy", minval=1, maxval=30)
+ath_cY = input.color(#F44336, "",      group = grpATH, inline="athy")
+
+ath_sM = input.bool(true,  "Aylık",    group = grpATH, inline="athm")
+ath_nM = input.int(6, "Adet",          group = grpATH, inline="athm", minval=1, maxval=60)
+ath_cM = input.color(#9598a1, "",      group = grpATH, inline="athm")
+
+ath_sW = input.bool(true,  "Haftalık", group = grpATH, inline="athw")
+ath_nW = input.int(4, "Adet",          group = grpATH, inline="athw", minval=1, maxval=60)
+ath_cW = input.color(#9C27B0, "",      group = grpATH, inline="athw")
+
+ath_sD = input.bool(false, "Günlük",   group = grpATH, inline="athd")
+ath_nD = input.int(3, "Adet",          group = grpATH, inline="athd", minval=1, maxval=60)
+ath_cD = input.color(#2196F3, "",      group = grpATH, inline="athd")
+
+ath_sty  = ath_styStr == "Düz" ? line.style_solid : ath_styStr == "Kesikli" ? line.style_dashed : line.style_dotted
+ath_sz   = ath_szStr == "Çok küçük" ? size.tiny : ath_szStr == "Küçük" ? size.small : size.normal
+
+// Bir barın milisaniye cinsinden süresi — zaman koordinatlarında "bar" ofseti için
+ath_barMs = timeframe.in_seconds(timeframe.period) * 1000
+
+var string[] ath_AYLAR = array.from("Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara")
+
+// ── Dönem zirvelerinin toplanması (bar başlangıç ZAMANI saklanır) ──────────
+var float[] ath_yH_a = array.new_float(), var int[] ath_yT_a = array.new_int(), var string[] ath_yN_a = array.new_string()
+var float[] ath_mH_a = array.new_float(), var int[] ath_mT_a = array.new_int(), var string[] ath_mN_a = array.new_string()
+var float[] ath_wH_a = array.new_float(), var int[] ath_wT_a = array.new_int(), var string[] ath_wN_a = array.new_string()
+var float[] ath_dH_a = array.new_float(), var int[] ath_dT_a = array.new_int(), var string[] ath_dN_a = array.new_string()
+
+var float ath_yH = na, var int ath_yT = na, var string ath_yN = ""
+var float ath_mH = na, var int ath_mT = na, var string ath_mN = ""
+var float ath_wH = na, var int ath_wT = na, var string ath_wN = ""
+var float ath_dH = na, var int ath_dT = na, var string ath_dN = ""
+
+if timeframe.change("12M") or na(ath_yT)
+    if not na(ath_yH)
+        array.push(ath_yH_a, ath_yH), array.push(ath_yT_a, ath_yT), array.push(ath_yN_a, ath_yN)
+    ath_yH := high, ath_yT := time, ath_yN := str.tostring(year)
+else
+    ath_yH := math.max(ath_yH, high)
+
+if timeframe.change("M") or na(ath_mT)
+    if not na(ath_mH)
+        array.push(ath_mH_a, ath_mH), array.push(ath_mT_a, ath_mT), array.push(ath_mN_a, ath_mN)
+    ath_mH := high, ath_mT := time, ath_mN := array.get(ath_AYLAR, month - 1) + " " + str.tostring(year)
+else
+    ath_mH := math.max(ath_mH, high)
+
+if timeframe.change("W") or na(ath_wT)
+    if not na(ath_wH)
+        array.push(ath_wH_a, ath_wH), array.push(ath_wT_a, ath_wT), array.push(ath_wN_a, ath_wN)
+    ath_wH := high, ath_wT := time, ath_wN := str.format_time(time, "dd.MM.yy", syminfo.timezone)
+else
+    ath_wH := math.max(ath_wH, high)
+
+if timeframe.change("D") or na(ath_dT)
+    if not na(ath_dH)
+        array.push(ath_dH_a, ath_dH), array.push(ath_dT_a, ath_dT), array.push(ath_dN_a, ath_dN)
+    ath_dH := high, ath_dT := time, ath_dN := str.format_time(time, "dd.MM.yy", syminfo.timezone)
+else
+    ath_dH := math.max(ath_dH, high)
+
+// ── Çizim ──────────────────────────────────────────────────────────────────
+var line[]   ath_L    = array.new_line()
+var label[]  ath_B    = array.new_label()
+var box[]    ath_X    = array.new_box()
+
+ath_f_draw(float price, int tstart, string nm, color col, string tfName) =>
+    ln = line.new(tstart, price, time, price, xloc = xloc.bar_time, extend = extend.right,
+                  color = col, width = ath_lw, style = ath_sty, force_overlay = true)
+    array.push(ath_L, ln)
+    txt = nm + " " + tfName + (ath_showVal ? "  " + str.tostring(price, format.mintick) : "")
+    lx  = ath_pos == "Sağda" ? time + ath_off * ath_barMs : tstart
+    if ath_txtMode == "Kutu (etiket değil)"
+        h = price * 0.0006
+        bx = box.new(lx, price + h, lx + ath_wid * ath_barMs, price - h, xloc = xloc.bar_time,
+                     border_color = color.new(color.black, 100), bgcolor = color.new(color.black, 100),
+                     text = txt, text_color = col, text_size = ath_sz,
+                     text_halign = text.align_left, text_valign = text.align_center, force_overlay = true)
+        array.push(ath_X, bx)
+    else if ath_txtMode == "Etiket (label)"
+        lb = label.new(lx, price, txt, xloc = xloc.bar_time, style = label.style_none,
+                       textcolor = col, size = ath_sz, force_overlay = true)
+        array.push(ath_B, lb)
+
+ath_f_render(float[] hs, int[] ts, string[] ns, float curH, int curT, string curN, int adet, color col, string tfName) =>
+    ph = array.copy(hs), pt = array.copy(ts), pn = array.copy(ns)
+    if not na(curH)
+        array.push(ph, curH), array.push(pt, curT), array.push(pn, curN)
+    fh = array.new_float(), ft = array.new_int(), fn = array.new_string()
+    float run = na
+    if array.size(ph) > 0
+        for i = 0 to array.size(ph) - 1
+            p = array.get(ph, i)
+            if not ath_recOnly or na(run) or p > run
+                array.push(fh, p), array.push(ft, array.get(pt, i)), array.push(fn, array.get(pn, i))
+            run := na(run) ? p : math.max(run, p)
+    n = array.size(fh)
+    if n > 0
+        st = math.max(0, n - adet)
+        for i = st to n - 1
+            ath_f_draw(array.get(fh, i), array.get(ft, i), array.get(fn, i), col, tfName)
+
+if barstate.islast
+    while array.size(ath_L) > 0
+        line.delete(array.pop(ath_L))
+    while array.size(ath_B) > 0
+        label.delete(array.pop(ath_B))
+    while array.size(ath_X) > 0
+        box.delete(array.pop(ath_X))
+
+    if ath_on and ath_sY
+        ath_f_render(ath_yH_a, ath_yT_a, ath_yN_a, ath_yH, ath_yT, ath_yN, ath_nY, ath_cY, "Yıllık")
+    if ath_on and ath_sM
+        ath_f_render(ath_mH_a, ath_mT_a, ath_mN_a, ath_mH, ath_mT, ath_mN, ath_nM, ath_cM, "Aylık")
+    if ath_on and ath_sW
+        ath_f_render(ath_wH_a, ath_wT_a, ath_wN_a, ath_wH, ath_wT, ath_wN, ath_nW, ath_cW, "Haftalık")
+    if ath_on and ath_sD
+        ath_f_render(ath_dH_a, ath_dT_a, ath_dN_a, ath_dH, ath_dT, ath_dN, ath_nD, ath_cD, "Günlük")
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 21: FİBONACCİ (Fiyat paneli + AYRIŞMA osilatörü)  ·  v2
+//
+// BAĞIMLILIK: KISIM 1'deki `z`, `expPrice`, `sdCum` değişkenlerini okur.
+//             Hiçbirini değiştirmez; tüm kendi isimleri fib_ ön eklidir.
+// ═══════════════════════════════════════════════════════════════════════════
+grpFib  = "🌀💠🌀💠🌀 FİBONACCİ · GENEL 🌀💠🌀💠🌀"
+fib_onP = input.bool(false, "Fiyat panelinde çiz",   group = grpFib) and not sade
+fib_onZ = input.bool(true,  "AYRIŞMA panelinde çiz", group = grpFib) and not sade
+fib_mode = input.string("Otomatik (son N bar)", "Dayanak (swing) seçimi",
+     options = ["Otomatik (son N bar)", "Otomatik (pivot swing)", "Manuel (fiyat paneli)"], group = grpFib)
+fib_len  = input.int(125, "Pencere / Pivot uzunluğu", minval = 5, maxval = 5000, group = grpFib)
+fib_lenZ = input.int(125, "AYRIŞMA penceresi",        minval = 5, maxval = 5000, group = grpFib)
+
+// ── 0 seviyesi nerede? ─────────────────────────────────────────────────────
+fib_zero = input.string("Otomatik (0 = en son oluşan uç)", "0 seviyesi nerede?",
+     options = ["Otomatik (0 = en son oluşan uç)", "0 = TEPE  (yukarıdan aşağı)", "0 = DİP  (aşağıdan yukarı)"],
+     group = grpFib,
+     tooltip = "Otomatik: tepe ile dipten hangisi daha YENİ ise 0 oraya konur, 100 diğer uca. Yani fibo hep en son oluşan uçtan geriye doğru çekilmiş olur. Diğer iki seçenek bunu sabitler.")
+
+// ── İki panelin dayanağını senkronize et ──────────────────────────────────
+fib_sync = input.string("Ayrışma swingine göre hizala", "Dayanak senkronizasyonu",
+     options = ["Bağımsız (her panel kendi swingi)", "Fiyat swingine göre hizala", "Ayrışma swingine göre hizala"],
+     group = grpFib,
+     tooltip = "Bağımsız: fiyat kendi tepe/dibini, osilatör kendi tepe/dibini bulur — bunlar farklı barlarda oluşabilir ve iki panel farklı hareketi ölçer. Diğer iki seçenek, her iki fiboyu AYNI barlara sabitler.")
+
+fib_syncTol = input.int(19, "Hizalama toleransı (bar)", minval = 0, maxval = 100, group = grpFib,
+     tooltip = "Ayrışmanın ucu ile fiyatın ucu genelde tam aynı barda oluşmaz. Hizalama yapılırken o barın bu kadar öncesine ve sonrasına bakılıp gerçek uç değer alınır. 0 = sadece o bar.")
+
+// ── Karşı ucu bulunan ucun ÖNCESİNDEN ara ─────────────────────────────────
+fib_useBack = input.bool(true, "Karşı ucu, bulunan ucun öncesinden ara", group = grpFib,
+     tooltip = "Kapalıyken tepe ve dip birbirinden bağımsız aranır — dip tepeden SONRA oluşmuş olabilir ve fibo gerçek bir bacağı ölçmez. Açıkken önce en yeni uç bulunur, sonra karşı uç yalnızca onun öncesindeki barlarda aranır.")
+fib_back = input.int(199, "Ek geri arama (bar)", minval = 0, maxval = 200, group = grpFib,
+     tooltip = "Bulunan ucun kaç bar öncesine kadar karşı uç aranacak.")
+
+// ── Uzatma ────────────────────────────────────────────────────────────────
+fib_extStr  = input.string("Her iki yön", "Çizgileri uzat", options = ["Yok", "Sağa", "Sola", "Her iki yön"], group = grpFib)
+fib_fromSw  = input.bool(true, "Çizgiler swing noktasından başlasın", group = grpFib)
+fib_lw      = input.int(1, "Çizgi kalınlığı", minval = 1, maxval = 4, group = grpFib)
+fib_styStr  = input.string("Düz", "Çizgi stili", options = ["Düz","Kesikli","Noktalı"], group = grpFib)
+
+// ── Yazı ──────────────────────────────────────────────────────────────────
+grpFibT = "🔤🔠🔤🔠🔤 FİBONACCİ · YAZI 🔤🔠🔤🔠🔤"
+fib_txtMode = input.string("Kutu (etiket değil)", "Yazı tipi",
+     options = ["Kutu (etiket değil)", "Etiket (label)", "Yazı yok"], group = grpFibT)
+fib_szStr   = input.string("Normal", "Yazı boyutu", options = ["Çok küçük","Küçük","Normal"], group = grpFibT)
+fib_vPos    = input.string("Çizginin üstünde", "Yazı dikey konumu",
+     options = ["Çizginin üstünde", "Çizgi üzerinde (ortalı)", "Çizginin altında"], group = grpFibT)
+fib_shift   = input.int(14, "Dikey kayma (‰ aralık)", minval = 0, maxval = 100, group = grpFibT,
+     tooltip = "Yazının çizgiden ne kadar uzağa konacağı. Swing aralığının binde kaçı olduğunu belirtir; sembolden bağımsız çalışır.")
+fib_off     = input.int(7,  "Yazı sağ boşluğu (bar)",    minval = -500, maxval = 500, group = grpFibT)
+fib_wid     = input.int(41, "Kutu yazı genişliği (bar)", minval = 5, maxval = 200, group = grpFibT)
+fib_showPct = input.bool(true, "Oran (%) görünsün",  group = grpFibT)
+fib_showVal = input.bool(true, "Değer görünsün",     group = grpFibT)
+fib_zPrice  = input.bool(true, "AYRIŞMA seviyelerinde TAHMİNİ FİYAT görünsün", group = grpFibT,
+     tooltip = "Osilatördeki her σ seviyesi için, ayrışma o seviyeye geldiğinde coinin fiyatının ne olacağını hesaplar. Formül: beklenen fiyat × exp(σ × sdCum).")
+
+fib_fill   = input.bool(true, "Seviyeler arasını doldur", group = grpFib)
+fib_fillTr = input.int(93, "Dolgu şeffaflığı", minval = 60, maxval = 100, group = grpFib)
+
+// ── Manuel dayanak (opsiyonel) ─────────────────────────────────────────────
+grpFibM = "✋🖐✋🖐✋ FİBONACCİ · MANUEL DAYANAK ✋🖐✋🖐✋"
+fib_mAuto = input.bool(true, "Manuel noktalar bu sembole uymuyorsa otomatiğe dön", group = grpFibM)
+fib_mT1 = input.time(timestamp("28 Jul 2025 00:00 +0000"), "1. nokta zamanı",  group = grpFibM)
+fib_mP1 = input.float(0.0, "1. nokta fiyatı (0 = kapalı)", group = grpFibM, step = 0.0001)
+fib_mT2 = input.time(timestamp("01 Jun 2026 00:00 +0000"), "2. nokta zamanı",  group = grpFibM)
+fib_mP2 = input.float(0.0, "2. nokta fiyatı (0 = kapalı)", group = grpFibM, step = 0.0001)
+
+// ── Seviyeler (aç/kapa · oran · renk) ──────────────────────────────────────
+grpFibL = "📏📐📏📐📏 FİBONACCİ · SEVİYELER 📏📐📏📐📏"
+fib_s0 = input.bool(true,  "", group=grpFibL, inline="f0"), fib_v0 = input.float(0.0,   "", group=grpFibL, inline="f0", step=0.001), fib_c0 = input.color(#787b86, "", group=grpFibL, inline="f0")
+fib_s1 = input.bool(true,  "", group=grpFibL, inline="f1"), fib_v1 = input.float(0.236, "", group=grpFibL, inline="f1", step=0.001), fib_c1 = input.color(#f23645, "", group=grpFibL, inline="f1")
+fib_s2 = input.bool(true,  "", group=grpFibL, inline="f2"), fib_v2 = input.float(0.382, "", group=grpFibL, inline="f2", step=0.001), fib_c2 = input.color(#ff9800, "", group=grpFibL, inline="f2")
+fib_s3 = input.bool(true,  "", group=grpFibL, inline="f3"), fib_v3 = input.float(0.5,   "", group=grpFibL, inline="f3", step=0.001), fib_c3 = input.color(#4caf50, "", group=grpFibL, inline="f3")
+fib_s4 = input.bool(true,  "", group=grpFibL, inline="f4"), fib_v4 = input.float(0.618, "", group=grpFibL, inline="f4", step=0.001), fib_c4 = input.color(#089981, "", group=grpFibL, inline="f4")
+fib_s5 = input.bool(false, "", group=grpFibL, inline="f5"), fib_v5 = input.float(0.65,  "", group=grpFibL, inline="f5", step=0.001), fib_c5 = input.color(#00bcd4, "", group=grpFibL, inline="f5")
+fib_s6 = input.bool(true,  "", group=grpFibL, inline="f6"), fib_v6 = input.float(0.786, "", group=grpFibL, inline="f6", step=0.001), fib_c6 = input.color(#2196f3, "", group=grpFibL, inline="f6")
+fib_s7 = input.bool(true,  "", group=grpFibL, inline="f7"), fib_v7 = input.float(1.0,   "", group=grpFibL, inline="f7", step=0.001), fib_c7 = input.color(#787b86, "", group=grpFibL, inline="f7")
+fib_s8 = input.bool(false, "", group=grpFibL, inline="f8"), fib_v8 = input.float(1.272, "", group=grpFibL, inline="f8", step=0.001), fib_c8 = input.color(#9c27b0, "", group=grpFibL, inline="f8")
+fib_s9 = input.bool(false, "", group=grpFibL, inline="f9"), fib_v9 = input.float(1.618, "", group=grpFibL, inline="f9", step=0.001), fib_c9 = input.color(#e91e63, "", group=grpFibL, inline="f9")
+
+fib_sty   = fib_styStr == "Düz" ? line.style_solid : fib_styStr == "Kesikli" ? line.style_dashed : line.style_dotted
+fib_sz    = fib_szStr == "Çok küçük" ? size.tiny : fib_szStr == "Küçük" ? size.small : size.normal
+fib_barMs = timeframe.in_seconds(timeframe.period) * 1000
+fib_extnd = fib_extStr == "Yok" ? extend.none : fib_extStr == "Sağa" ? extend.right : fib_extStr == "Sola" ? extend.left : extend.both
+fib_none  = color.new(color.black, 100)
+fib_vSign = fib_vPos == "Çizginin üstünde" ? 1.0 : fib_vPos == "Çizginin altında" ? -1.0 : 0.0
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  DAYANAK NOKTALARI
+// ═══════════════════════════════════════════════════════════════════════════
+fib_hiOff = math.abs(nz(ta.highestbars(high, fib_len), 0))
+fib_loOff = math.abs(nz(ta.lowestbars(low,  fib_len), 0))
+fib_hiP   = ta.highest(high, fib_len)
+fib_loP   = ta.lowest(low,   fib_len)
+
+fib_ph = ta.pivothigh(fib_len, fib_len)
+fib_pl = ta.pivotlow(fib_len, fib_len)
+var float fib_pvHiP = na, var int fib_pvHiT = na, var int fib_pvHiB = na
+var float fib_pvLoP = na, var int fib_pvLoT = na, var int fib_pvLoB = na
+if not na(fib_ph)
+    fib_pvHiP := fib_ph, fib_pvHiT := time[fib_len], fib_pvHiB := bar_index - fib_len
+if not na(fib_pl)
+    fib_pvLoP := fib_pl, fib_pvLoT := time[fib_len], fib_pvLoB := bar_index - fib_len
+
+var float fib_chartHi = na, var float fib_chartLo = na
+fib_chartHi := na(fib_chartHi) ? high : math.max(fib_chartHi, high)
+fib_chartLo := na(fib_chartLo) ? low  : math.min(fib_chartLo, low)
+
+fib_manOkA = fib_mP1 > 0 and fib_mP2 > 0 and fib_mP1 != fib_mP2
+fib_manOkB = fib_mP1 <= fib_chartHi and fib_mP1 >= fib_chartLo
+fib_manOkC = fib_mP2 <= fib_chartHi and fib_mP2 >= fib_chartLo
+fib_manOk  = fib_manOkA and fib_manOkB and fib_manOkC
+
+fib_useManual = fib_mode == "Manuel (fiyat paneli)" and (fib_manOk or not fib_mAuto)
+fib_usePivot  = fib_mode == "Otomatik (pivot swing)"
+
+float fib_top = na, float fib_bot = na
+int   fib_topT = na, int fib_botT = na
+bool  fib_zeroTop = true            // true → 0 seviyesi TEPEDE
+
+if fib_useManual
+    fib_top  := math.max(fib_mP1, fib_mP2)
+    fib_bot  := math.min(fib_mP1, fib_mP2)
+    fib_topT := fib_mP1 >= fib_mP2 ? fib_mT1 : fib_mT2
+    fib_botT := fib_mP1 >= fib_mP2 ? fib_mT2 : fib_mT1
+    fib_zeroTop := fib_topT >= fib_botT
+else if fib_usePivot
+    fib_top  := fib_pvHiP
+    fib_bot  := fib_pvLoP
+    fib_topT := fib_pvHiT
+    fib_botT := fib_pvLoT
+    fib_zeroTop := nz(fib_pvHiB, 0) >= nz(fib_pvLoB, 0)
+else if fib_useBack and fib_hiOff <= fib_loOff
+    float bl = low[fib_hiOff]
+    int   bo = fib_hiOff
+    for i = fib_hiOff to fib_hiOff + fib_back
+        if not na(low[i]) and low[i] < bl
+            bl := low[i]
+            bo := i
+    fib_top     := high[fib_hiOff]
+    fib_bot     := bl
+    fib_topT    := time[fib_hiOff]
+    fib_botT    := time[bo]
+    fib_zeroTop := true
+else if fib_useBack
+    float bh = high[fib_loOff]
+    int   bo = fib_loOff
+    for i = fib_loOff to fib_loOff + fib_back
+        if not na(high[i]) and high[i] > bh
+            bh := high[i]
+            bo := i
+    fib_bot     := low[fib_loOff]
+    fib_top     := bh
+    fib_botT    := time[fib_loOff]
+    fib_topT    := time[bo]
+    fib_zeroTop := false
+else
+    fib_top  := fib_hiP
+    fib_bot  := fib_loP
+    fib_topT := time[fib_hiOff]
+    fib_botT := time[fib_loOff]
+    fib_zeroTop := fib_hiOff <= fib_loOff
+
+// Geçersiz dayanak → otomatiğe düş
+if na(fib_top) or na(fib_bot) or fib_top <= fib_bot
+    fib_top  := fib_hiP
+    fib_bot  := fib_loP
+    fib_topT := time[fib_hiOff]
+    fib_botT := time[fib_loOff]
+    fib_zeroTop := fib_hiOff <= fib_loOff
+
+if fib_zero == "0 = TEPE  (yukarıdan aşağı)"
+    fib_zeroTop := true
+else if fib_zero == "0 = DİP  (aşağıdan yukarı)"
+    fib_zeroTop := false
+
+// ── AYRIŞMA osilatörü dayanağı (`z`) ───────────────────────────────────────
+fib_zHiOff = math.abs(nz(ta.highestbars(z, fib_lenZ), 0))
+fib_zLoOff = math.abs(nz(ta.lowestbars(z,  fib_lenZ), 0))
+
+float fib_zTop     = ta.highest(z, fib_lenZ)
+float fib_zBot     = ta.lowest(z,  fib_lenZ)
+int   fib_zHiUse   = fib_zHiOff
+int   fib_zLoUse   = fib_zLoOff
+bool  fib_zZeroTop = fib_zHiOff <= fib_zLoOff
+
+if fib_useBack and fib_zHiOff <= fib_zLoOff
+    float zl = z[fib_zHiOff]
+    int   zo = fib_zHiOff
+    for i = fib_zHiOff to fib_zHiOff + fib_back
+        if not na(z[i]) and z[i] < zl
+            zl := z[i]
+            zo := i
+    fib_zTop     := z[fib_zHiOff]
+    fib_zBot     := zl
+    fib_zHiUse   := fib_zHiOff
+    fib_zLoUse   := zo
+    fib_zZeroTop := true
+else if fib_useBack
+    float zh = z[fib_zLoOff]
+    int   zo = fib_zLoOff
+    for i = fib_zLoOff to fib_zLoOff + fib_back
+        if not na(z[i]) and z[i] > zh
+            zh := z[i]
+            zo := i
+    fib_zBot     := z[fib_zLoOff]
+    fib_zTop     := zh
+    fib_zLoUse   := fib_zLoOff
+    fib_zHiUse   := zo
+    fib_zZeroTop := false
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  DAYANAK SENKRONİZASYONU
+// ═══════════════════════════════════════════════════════════════════════════
+if fib_sync == "Fiyat swingine göre hizala"
+    float zA  = z[fib_hiOff]
+    int   zAo = fib_hiOff
+    float zB  = z[fib_loOff]
+    int   zBo = fib_loOff
+    for i = int(math.max(0, fib_hiOff - fib_syncTol)) to fib_hiOff + fib_syncTol
+        if not na(z[i]) and z[i] > zA
+            zA  := z[i]
+            zAo := i
+    for i = int(math.max(0, fib_loOff - fib_syncTol)) to fib_loOff + fib_syncTol
+        if not na(z[i]) and z[i] < zB
+            zB  := z[i]
+            zBo := i
+    if not na(zA) and not na(zB) and zA > zB
+        fib_zTop     := zA
+        fib_zBot     := zB
+        fib_zHiUse   := zAo
+        fib_zLoUse   := zBo
+        fib_zZeroTop := zAo <= zBo
+else if fib_sync == "Ayrışma swingine göre hizala"
+    float pA  = high[fib_zHiOff]
+    int   pAo = fib_zHiOff
+    float pB  = low[fib_zLoOff]
+    int   pBo = fib_zLoOff
+    for i = int(math.max(0, fib_zHiOff - fib_syncTol)) to fib_zHiOff + fib_syncTol
+        if not na(high[i]) and high[i] > pA
+            pA  := high[i]
+            pAo := i
+    for i = int(math.max(0, fib_zLoOff - fib_syncTol)) to fib_zLoOff + fib_syncTol
+        if not na(low[i]) and low[i] < pB
+            pB  := low[i]
+            pBo := i
+    if not na(pA) and not na(pB) and pA > pB
+        fib_top     := pA
+        fib_bot     := pB
+        fib_topT    := time[pAo]
+        fib_botT    := time[pBo]
+        fib_zeroTop := pAo <= pBo
+
+// "0 seviyesi nerede?" seçimi senkronizasyondan SONRA yeniden uygulanır
+if fib_zero == "0 = TEPE  (yukarıdan aşağı)"
+    fib_zeroTop  := true
+    fib_zZeroTop := true
+else if fib_zero == "0 = DİP  (aşağıdan yukarı)"
+    fib_zeroTop  := false
+    fib_zZeroTop := false
+
+fib_startT  = math.min(nz(fib_topT, time), nz(fib_botT, time))
+fib_zStartT = time[math.max(fib_zHiUse, fib_zLoUse)]
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SEVİYE HESABI
+// ═══════════════════════════════════════════════════════════════════════════
+fib_calc(float topV, float botV, bool zeroTop, float ratio) =>
+    rng = topV - botV
+    zeroTop ? topV - rng * ratio : botV + rng * ratio
+
+fib_build(float topV, float botV, bool zeroTop) =>
+    lv = array.new_float(), cl = array.new_color(), nm = array.new_string()
+    if not na(topV) and not na(botV) and topV > botV
+        if fib_s0
+            array.push(lv, fib_calc(topV, botV, zeroTop, fib_v0)), array.push(cl, fib_c0), array.push(nm, str.tostring(fib_v0 * 100, "#.##") + "%")
+        if fib_s1
+            array.push(lv, fib_calc(topV, botV, zeroTop, fib_v1)), array.push(cl, fib_c1), array.push(nm, str.tostring(fib_v1 * 100, "#.##") + "%")
+        if fib_s2
+            array.push(lv, fib_calc(topV, botV, zeroTop, fib_v2)), array.push(cl, fib_c2), array.push(nm, str.tostring(fib_v2 * 100, "#.##") + "%")
+        if fib_s3
+            array.push(lv, fib_calc(topV, botV, zeroTop, fib_v3)), array.push(cl, fib_c3), array.push(nm, str.tostring(fib_v3 * 100, "#.##") + "%")
+        if fib_s4
+            array.push(lv, fib_calc(topV, botV, zeroTop, fib_v4)), array.push(cl, fib_c4), array.push(nm, str.tostring(fib_v4 * 100, "#.##") + "%")
+        if fib_s5
+            array.push(lv, fib_calc(topV, botV, zeroTop, fib_v5)), array.push(cl, fib_c5), array.push(nm, str.tostring(fib_v5 * 100, "#.##") + "%")
+        if fib_s6
+            array.push(lv, fib_calc(topV, botV, zeroTop, fib_v6)), array.push(cl, fib_c6), array.push(nm, str.tostring(fib_v6 * 100, "#.##") + "%")
+        if fib_s7
+            array.push(lv, fib_calc(topV, botV, zeroTop, fib_v7)), array.push(cl, fib_c7), array.push(nm, str.tostring(fib_v7 * 100, "#.##") + "%")
+        if fib_s8
+            array.push(lv, fib_calc(topV, botV, zeroTop, fib_v8)), array.push(cl, fib_c8), array.push(nm, str.tostring(fib_v8 * 100, "#.##") + "%")
+        if fib_s9
+            array.push(lv, fib_calc(topV, botV, zeroTop, fib_v9)), array.push(cl, fib_c9), array.push(nm, str.tostring(fib_v9 * 100, "#.##") + "%")
+    [lv, cl, nm]
+
+// σ seviyesinden coinin ima edilen fiyatı: close = expPrice × exp(z × sdCum)
+fib_zToPrice(float zLvl) =>
+    (na(expPrice) or na(sdCum) or sdCum <= 0) ? float(na) : expPrice * math.exp(zLvl * sdCum)
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ÇİZİM
+// ═══════════════════════════════════════════════════════════════════════════
+var line[]  fib_L = array.new_line()
+var box[]   fib_X = array.new_box()
+var label[] fib_B = array.new_label()
+
+if barstate.islast
+    while array.size(fib_L) > 0
+        line.delete(array.pop(fib_L))
+    while array.size(fib_X) > 0
+        box.delete(array.pop(fib_X))
+    while array.size(fib_B) > 0
+        label.delete(array.pop(fib_B))
+
+    // ── FİYAT PANELİ (force_overlay = true) ────────────────────────────────
+    if fib_onP
+        [pLv, pCl, pNm] = fib_build(fib_top, fib_bot, fib_zeroTop)
+        if array.size(pLv) > 0
+            rng  = fib_top - fib_bot
+            gap  = rng * fib_shift / 1000.0
+            hh   = rng * 0.012
+            x1   = fib_fromSw ? fib_startT : time - 30 * fib_barMs
+            x2   = time + 60 * fib_barMs
+            lx   = time + fib_off * fib_barMs
+            for i = 0 to array.size(pLv) - 1
+                lvl = array.get(pLv, i)
+                col = array.get(pCl, i)
+                array.push(fib_L, line.new(x1, lvl, time, lvl, xloc = xloc.bar_time, extend = fib_extnd,
+                                            color = col, width = fib_lw, style = fib_sty, force_overlay = true))
+                if fib_fill and i > 0
+                    prev = array.get(pLv, i - 1)
+                    array.push(fib_X, box.new(x1, math.max(prev, lvl), x2, math.min(prev, lvl), xloc = xloc.bar_time,
+                                               border_color = fib_none, bgcolor = color.new(array.get(pCl, i - 1), fib_fillTr),
+                                               force_overlay = true))
+                txt = "Fib " + (fib_showPct ? array.get(pNm, i) : "") + (fib_showVal ? "  " + str.tostring(lvl, format.mintick) : "")
+                yy  = lvl + fib_vSign * gap
+                if fib_txtMode == "Kutu (etiket değil)"
+                    array.push(fib_X, box.new(lx, yy + hh, lx + fib_wid * fib_barMs, yy - hh, xloc = xloc.bar_time,
+                                               border_color = fib_none, bgcolor = fib_none,
+                                               text = txt, text_color = col, text_size = fib_sz,
+                                               text_halign = text.align_left, text_valign = text.align_center,
+                                               force_overlay = true))
+                else if fib_txtMode == "Etiket (label)"
+                    array.push(fib_B, label.new(lx, yy, txt, xloc = xloc.bar_time, style = label.style_none,
+                                                 textcolor = col, size = fib_sz, force_overlay = true))
+
+    // ── AYRIŞMA PANELİ (force_overlay yok → scriptin kendi paneli) ─────────
+    if fib_onZ
+        [zLv, zCl, zNm] = fib_build(fib_zTop, fib_zBot, fib_zZeroTop)
+        if array.size(zLv) > 0
+            rngZ = fib_zTop - fib_zBot
+            gapZ = rngZ * fib_shift / 1000.0
+            hhZ  = rngZ * 0.012
+            x1   = fib_fromSw ? fib_zStartT : time - 30 * fib_barMs
+            x2   = time + 60 * fib_barMs
+            lx   = time + fib_off * fib_barMs
+            for i = 0 to array.size(zLv) - 1
+                lvl = array.get(zLv, i)
+                col = array.get(zCl, i)
+                array.push(fib_L, line.new(x1, lvl, time, lvl, xloc = xloc.bar_time, extend = fib_extnd,
+                                            color = col, width = fib_lw, style = fib_sty))
+                if fib_fill and i > 0
+                    prev = array.get(zLv, i - 1)
+                    array.push(fib_X, box.new(x1, math.max(prev, lvl), x2, math.min(prev, lvl), xloc = xloc.bar_time,
+                                               border_color = fib_none, bgcolor = color.new(array.get(zCl, i - 1), fib_fillTr)))
+                imp  = fib_zToPrice(lvl)
+                tA   = fib_showPct ? array.get(zNm, i) : ""
+                tC   = fib_zPrice and not na(imp) ? "  ≈ " + str.tostring(imp, format.mintick) : ""
+                txt  = tA + tC
+                yy  = lvl + fib_vSign * gapZ
+                if fib_txtMode == "Kutu (etiket değil)"
+                    array.push(fib_X, box.new(lx, yy + hhZ, lx + fib_wid * fib_barMs, yy - hhZ, xloc = xloc.bar_time,
+                                               border_color = fib_none, bgcolor = fib_none,
+                                               text = txt, text_color = col, text_size = fib_sz,
+                                               text_halign = text.align_left, text_valign = text.align_center))
+                else if fib_txtMode == "Etiket (label)"
+                    array.push(fib_B, label.new(lx, yy, txt, xloc = xloc.bar_time, style = label.style_none,
+                                                 textcolor = col, size = fib_sz))
+
+// ── Alarmlar ───────────────────────────────────────────────────────────────
+fib_a382 = fib_calc(fib_top, fib_bot, fib_zeroTop, fib_v2)
+fib_a500 = fib_calc(fib_top, fib_bot, fib_zeroTop, fib_v3)
+fib_a618 = fib_calc(fib_top, fib_bot, fib_zeroTop, fib_v4)
+
+alertcondition(ta.cross(close, fib_a382), "Fibo %38.2 kesildi", "Fiyat %38.2 fibo seviyesini kesti")
+alertcondition(ta.cross(close, fib_a500), "Fibo %50 kesildi",   "Fiyat %50 fibo seviyesini kesti")
+alertcondition(ta.cross(close, fib_a618), "Fibo %61.8 kesildi", "Fiyat %61.8 fibo seviyesini kesti")
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 22: MSB KIRILIM ÇİZGİLERİ — AYARLANABİLİR
+// BAĞIMLILIK: piyasa, y1, y1i, y0i, d1, d1i, d0i, show_msb (BÖLÜM 19)
+// ═══════════════════════════════════════════════════════════════════════════
+// (Ayarları yukarı, MSB grubunun altına taşındı — BÖLÜM A sonu)
+
+
+var line[] msbc_L = array.new_line()
+
+if msbc_on and show_msb and piyasaDeg
+    if piyasa == 1
+        msbc_a1 = math.max(0, y1i - msbc_sol)
+        msbc_a2 = y0i + msbc_sag
+        array.push(msbc_L, line.new(msbc_a1, y1, msbc_a2, y1, color = msbc_bullCol, width = msbc_kal, style = msbc_stil, extend = msbc_uzat, force_overlay = true))
+    if piyasa == -1
+        msbc_b1 = math.max(0, d1i - msbc_sol)
+        msbc_b2 = d0i + msbc_sag
+        array.push(msbc_L, line.new(msbc_b1, d1, msbc_b2, d1, color = msbc_bearCol, width = msbc_kal, style = msbc_stil, extend = msbc_uzat, force_overlay = true))
+    while array.size(msbc_L) > msbc_adet
+        line.delete(array.shift(msbc_L))
+
+// (BÖLÜM 23 · Ayrışma–fiyat analiz tabloları kaldırıldı)
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 28: AYRIŞMA OSİLATÖRÜ — YAPI KIRILIMI VE KIRILIM ÇİZGİLERİ
+//
+// BÖLÜM 19/22 fiyat üzerinde çalışır ve force_overlay ile fiyat paneline
+// çizer. Bu bölüm AYNI mantığı `z` (ayrışma osilatörü) üzerinde kurar ve
+// force_overlay KULLANMAZ → çizimler scriptin kendi alt paneline düşer.
+//
+// NİYE AYRI BİR MOTOR
+//   Osilatörün tepe/dipleri fiyatınkilerle aynı barlarda oluşmaz. Fiyat yeni
+//   zirve yaparken ayrışma yapmıyorsa (ya da tersi) bu, fiyat grafiğinde
+//   görünmeyen bir yapı bilgisidir. Kırılan σ seviyesini ileride destek/
+//   direnç olarak izlemek, fiyattaki kırılımdan bağımsız bir sinyaldir.
+//
+// BAĞIMLILIK: yalnızca `z` (KISIM 1). Tüm isimler zm_ ön eklidir.
+// ═══════════════════════════════════════════════════════════════════════════
+// (Ayarları yukarı, MSB kırılım çizgilerinin altına taşındı — BÖLÜM A sonu)
+
+
+// ── ZigZag: σ serisinin tepe/dipleri ───────────────────────────────────────
+zm_up = z >= ta.highest(z, zm_len)
+zm_dn = z <= ta.lowest(z,  zm_len)
+
+var int zm_trend = 1
+zm_trend := zm_trend == 1 and zm_dn ? -1 : zm_trend == -1 and zm_up ? 1 : zm_trend
+
+// ta.change() global değişkende tutulur (CW10002)
+zm_trendDeg = ta.change(zm_trend) != 0
+
+zm_sinceUp = ta.barssince(zm_up[1])
+zm_dipDeg  = ta.lowest(z,  math.max(1, nz(zm_sinceUp, 1)))
+zm_dipBar  = bar_index - ta.barssince(zm_dipDeg == z)
+
+zm_sinceDn = ta.barssince(zm_dn[1])
+zm_tepDeg  = ta.highest(z, math.max(1, nz(zm_sinceDn, 1)))
+zm_tepBar  = bar_index - ta.barssince(zm_tepDeg == z)
+
+var float[] zm_tepDizi = array.new<float>(5)
+var int[]   zm_tepIdx  = array.new<int>(5)
+var float[] zm_dipDizi = array.new<float>(5)
+var int[]   zm_dipIdx   = array.new<int>(5)
+
+// v2: yapı her zaman hesaplanır (sinyal motoru kullanır); zm_on yalnızca çizimi açar
+if zm_trendDeg
+    if zm_trend == 1
+        array.push(zm_dipDizi, zm_dipDeg)
+        array.push(zm_dipIdx,  zm_dipBar)
+        if array.size(zm_dipDizi) > 20
+            array.shift(zm_dipDizi)
+            array.shift(zm_dipIdx)
+    if zm_trend == -1
+        array.push(zm_tepDizi, zm_tepDeg)
+        array.push(zm_tepIdx,  zm_tepBar)
+        if array.size(zm_tepDizi) > 20
+            array.shift(zm_tepDizi)
+            array.shift(zm_tepIdx)
+
+zm_tepAl(int _i) =>
+    [array.get(zm_tepDizi, array.size(zm_tepDizi) - 1 - _i), array.get(zm_tepIdx, array.size(zm_tepIdx) - 1 - _i)]
+zm_dipAl(int _i) =>
+    [array.get(zm_dipDizi, array.size(zm_dipDizi) - 1 - _i), array.get(zm_dipIdx, array.size(zm_dipIdx) - 1 - _i)]
+
+[zm_y0, zm_y0i] = zm_tepAl(0)
+[zm_y1, zm_y1i] = zm_tepAl(1)
+[zm_d0, zm_d0i] = zm_dipAl(0)
+[zm_d1, zm_d1i] = zm_dipAl(1)
+
+// ── Yapı kırılımı ──────────────────────────────────────────────────────────
+var int zm_yapi = 1
+zm_sonD0 = ta.valuewhen(ta.change(zm_yapi) != 0, zm_d0, 0)
+zm_sonY0 = ta.valuewhen(ta.change(zm_yapi) != 0, zm_y0, 0)
+zm_yapi := zm_sonD0 == zm_d0 or zm_sonY0 == zm_y0 ? zm_yapi :
+     zm_yapi == 1  and zm_d0 < zm_d1 and zm_d0 < zm_d1 - math.abs(zm_y0 - zm_d1) * zm_fib ? -1 :
+     zm_yapi == -1 and zm_y0 > zm_y1 and zm_y0 > zm_y1 + math.abs(zm_y1 - zm_d0) * zm_fib ?  1 : zm_yapi
+
+zm_yapiDeg = ta.change(zm_yapi) != 0
+
+// ── Çizim (force_overlay YOK → alt panel) ──────────────────────────────────
+var line[]  zm_L = array.new_line()
+var label[] zm_B = array.new_label()
+
+if zm_on and zm_yapiDeg
+    if zm_yapi == 1
+        zm_a1 = math.max(0, zm_y1i - zm_sol)
+        zm_a2 = zm_y0i + zm_sag
+        array.push(zm_L, line.new(zm_a1, zm_y1, zm_a2, zm_y1, color = zm_bullCol, width = zm_kal, style = zm_stil, extend = zm_uzat))
+        if zm_etiket
+            array.push(zm_B, label.new(int(math.avg(zm_y1i, zm_d0i)), zm_y1, "σ-MSB ▲", color = color.new(color.black, 100), style = label.style_label_down, textcolor = zm_bullCol, size = zm_sz))
+    if zm_yapi == -1
+        zm_b1 = math.max(0, zm_d1i - zm_sol)
+        zm_b2 = zm_d0i + zm_sag
+        array.push(zm_L, line.new(zm_b1, zm_d1, zm_b2, zm_d1, color = zm_bearCol, width = zm_kal, style = zm_stil, extend = zm_uzat))
+        if zm_etiket
+            array.push(zm_B, label.new(int(math.avg(zm_d1i, zm_y0i)), zm_d1, "σ-MSB ▼", color = color.new(color.black, 100), style = label.style_label_up, textcolor = zm_bearCol, size = zm_sz))
+    while array.size(zm_L) > zm_adet
+        line.delete(array.shift(zm_L))
+    while array.size(zm_B) > zm_adet
+        label.delete(array.shift(zm_B))
+
+// ── Alarmlar ───────────────────────────────────────────────────────────────
+alertcondition(zm_yapiDeg,                     "Ayrışma yapı kırılımı",          "Ayrışma osilatöründe yapı kırılımı oluştu")
+alertcondition(zm_yapiDeg and zm_yapi ==  1,   "Ayrışma yapı kırılımı ▲",        "Ayrışma yukarı yönlü yapı kırdı — coin piyasaya karşı güçleniyor")
+alertcondition(zm_yapiDeg and zm_yapi == -1,   "Ayrışma yapı kırılımı ▼",        "Ayrışma aşağı yönlü yapı kırdı — coin piyasaya karşı zayıflıyor")
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 29: DİKKAT / İLGİ OSİLATÖRÜ (DİO) — AYRIŞMA PANELİNE BİNDİRİLMİŞ
+//
+// Ayrı panel AÇMAZ. Çizgi, AYRIŞMA (σ) paneline biner (ikisi de z-skor).
+// Mum rengi · PANİK/COŞKU etiketleri · tablo → force_overlay ile fiyat paneline.
+// Tüm isimler dio_ ön eklidir; diğer bölümlerle çakışmaz.
+// ═══════════════════════════════════════════════════════════════════════════
+grpDIO = "🔥👀🔥👀🔥 DİO · DİKKAT / İLGİ 🔥👀🔥👀🔥"
+dio_on    = input.bool(true, "DİO modülünü aç", group = grpDIO)
+dio_mod   = input.string("Ayrışma paneline bindir", "Gösterim",
+     options = ["Ayrışma paneline bindir", "Sadece fiyat panelinde (mum rengi + etiket)"], group = grpDIO,
+     tooltip = "İkinci seçenekte alt panele hiçbir şey çizilmez; DİO yalnızca mum rengi ve etiketlerle görünür.")
+dio_olcek = input.float(1.0, "Panel ölçeği (çarpan)", minval = 0.1, maxval = 5.0, step = 0.1, group = grpDIO,
+     tooltip = "DİO çizgisi ayrışma çizgisini ezerse küçült (ör. 0.6). Sadece görünümü değiştirir, sinyaller etkilenmez.")
+dio_kal   = input.int(1, "Çizgi kalınlığı", minval = 1, maxval = 4, group = grpDIO)
+dio_seviye= input.bool(true, "Aşırı ilgi / ilgisizlik çizgileri", group = grpDIO)
+dio_bars  = input.bool(true, "Mumları renklendir",       group = grpDIO)
+dio_tags  = input.bool(true, "PANİK / COŞKU etiketleri", group = grpDIO)
+dio_tbl   = input.bool(true, "DİO satırı (bilgi panelinde)", group = grpDIO,
+     tooltip = "v2: Ayrı DİO tablosu kaldırıldı; DİO değeri ve durumu ana BİLGİ PANELİ'nde (Detaylı modda) gösterilir.")
+
+grpDIOB = "🧮🔥🧮🔥🧮 DİO · BİLEŞENLER 🧮🔥🧮🔥🧮"
+dio_wVol  = input.float(1.0, "Hacim ağırlığı",         minval = 0, step = 0.1, group = grpDIOB)
+dio_wRng  = input.float(0.7, "Oynaklık (TR) ağırlığı", minval = 0, step = 0.1, group = grpDIOB)
+dio_wRet  = input.float(0.7, "Mutlak getiri ağırlığı", minval = 0, step = 0.1, group = grpDIOB)
+dio_useOI = input.bool(true, "Açık pozisyon (OI) kullan", group = grpDIOB,
+     tooltip = "Binance .P gibi OI verisi olan vadeli sembollerde çalışır. Veri yoksa otomatik devre dışı kalır.")
+dio_wOI   = input.float(0.8, "OI değişim ağırlığı",    minval = 0, step = 0.1, group = grpDIOB)
+dio_base  = input.int(100, "Bileşen z-skor penceresi", minval = 20, group = grpDIOB)
+dio_smt   = input.int(3,   "Yumuşatma (EMA)",          minval = 1,  group = grpDIOB)
+dio_norm  = input.int(200, "Son z-skor penceresi",     minval = 50, group = grpDIOB)
+dio_upper = input.float(3.0,  "Aşırı ilgi seviyesi", step = 0.1, group = grpDIOB)
+dio_lower = input.float(-1.5, "İlgisizlik seviyesi", step = 0.1, group = grpDIOB)
+dio_dir   = input.int(10, "Yön penceresi (bar)", minval = 1, group = grpDIOB,
+     tooltip = "Patlama anında fiyat bu kadar bar öncesine göre düşmüşse PANİK, yükselmişse COŞKU.")
+
+// ── Yardımcılar ────────────────────────────────────────────────────────────
+dio_fz(float x, int len) =>
+    float m = ta.sma(x, len)
+    float s = ta.stdev(x, len)
+    s > 0 ? (x - m) / s : 0.0
+
+dio_cMor  = color.rgb(110, 60, 170)
+dio_cMavi = color.rgb(40, 110, 230)
+dio_cYes  = color.rgb(60, 200, 120)
+dio_cSari = color.rgb(250, 225, 40)
+
+dio_col(float v) =>
+    v <= 0 ? color.from_gradient(v, dio_lower, 0, dio_cMor, dio_cMavi) :
+     v <= dio_upper / 2 ? color.from_gradient(v, 0, dio_upper / 2, dio_cMavi, dio_cYes) :
+     color.from_gradient(v, dio_upper / 2, dio_upper, dio_cYes, dio_cSari)
+
+// ── Bileşenler (her barda hesaplanır — koşul içine alınmaz, CW10002) ──────
+dio_volOk = not na(volume)
+dio_volZ  = dio_fz(math.log(nz(volume) + 1), dio_base)
+dio_rngZ  = dio_fz(ta.tr(true) / close, dio_base)
+dio_retZ  = dio_fz(math.abs(math.log(close / nz(close[1], close))), dio_base)
+
+dio_oiTk  = syminfo.prefix + ":" + syminfo.ticker + "_OI"
+dio_oi    = request.security(dio_oiTk, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off, ignore_invalid_symbol = true)
+dio_oiChg = na(dio_oi) or na(dio_oi[1]) or dio_oi[1] == 0 ? float(na) : math.abs(dio_oi / dio_oi[1] - 1)
+dio_oiOk  = dio_useOI and not na(dio_oiChg)
+dio_oiZ   = dio_fz(nz(dio_oiChg), dio_base)
+
+dio_wSum = (dio_volOk ? dio_wVol : 0) + dio_wRng + dio_wRet + (dio_oiOk ? dio_wOI : 0)
+dio_raw  = dio_wSum > 0 ? ((dio_volOk ? dio_wVol * dio_volZ : 0) + dio_wRng * dio_rngZ + dio_wRet * dio_retZ + (dio_oiOk ? dio_wOI * dio_oiZ : 0)) / dio_wSum : 0.0
+dio_osc  = dio_fz(ta.ema(dio_raw, dio_smt), dio_norm)
+
+// ── Sinyaller ──────────────────────────────────────────────────────────────
+dio_chg   = (close - close[dio_dir]) / close[dio_dir]
+dio_spike = ta.crossover(dio_osc, dio_upper)
+dio_panic = dio_on and dio_spike and dio_chg < 0
+dio_euph  = dio_on and dio_spike and dio_chg >= 0
+dio_quiet = dio_on and ta.crossunder(dio_osc, dio_lower)
+
+// ── Alt panel: AYRIŞMA paneline bindirme (yeni panel YOK) ─────────────────
+dio_pane = dio_on and dio_mod == "Ayrışma paneline bindir" and not sade
+plot(dio_pane ? dio_osc * dio_olcek : na, "DİO",
+     color = dio_osc >= dio_upper ? color.rgb(80, 210, 255) : color.new(color.rgb(40, 120, 235), 20), linewidth = dio_kal)
+plot(dio_pane and dio_seviye ? dio_upper * dio_olcek : na, "DİO aşırı ilgi", color = color.new(color.orange, 45), linewidth = 1, style = plot.style_circles)
+plot(dio_pane and dio_seviye ? dio_lower * dio_olcek : na, "DİO ilgisizlik", color = color.new(color.rgb(255, 200, 120), 45), linewidth = 1, style = plot.style_circles)
+
+// ── Fiyat paneli: etiketler (mum rengi BÖLÜM 30'da — skor seçeneğiyle birlikte) ──
+plotshape(dio_tags and dio_panic, "DİO PANİK", shape.labelup,   location.belowbar, color.red,    text = "PANİK", textcolor = color.white, size = size.tiny, force_overlay = true)
+plotshape(dio_tags and dio_euph,  "DİO COŞKU", shape.labeldown, location.abovebar, color.orange, text = "COŞKU", textcolor = color.black, size = size.tiny, force_overlay = true)
+
+// DİO durumu (bilgi paneli ve sinyal açıklaması kullanır; eski ayrı tablo kaldırıldı)
+dio_durum = dio_osc >= dio_upper ? (dio_chg < 0 ? "PANİK" : "COŞKU") : dio_osc <= dio_lower ? "İlgisiz" : "Normal"
+
+// ── Alarmlar ───────────────────────────────────────────────────────────────
+alertcondition(dio_panic, "DİO Panik",      "Dikkat patlaması + düşüş: olası kapitülasyon")
+alertcondition(dio_euph,  "DİO Coşku",      "Dikkat patlaması + yükseliş: olası coşku / yorgunluk")
+alertcondition(dio_quiet, "DİO İlgisizlik", "İlgi, ilgisizlik bölgesine indi")
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 30: ⚡ BİRLEŞİK SİNYAL MOTORU
+//
+// Beş bağımsız teyit; her biri +1 (yükseliş) / −1 (düşüş) / 0 (kararsız) oy verir:
+//   1) Fiyat yapısı : MSB motorunun son kırılım yönü             (piyasa)
+//   2) σ yapısı     : ayrışma osilatörünün son kırılım yönü      (zm_yapi)
+//   3) Ayrışma      : z ≥ +1σ → +1 · z ≤ −1σ → −1                 (göreli güç)
+//   4) Trend        : fiyat EMA üstünde + EMA yükseliyor → +1 (tersi −1)
+//   5) Rejim        : USDT.D düşüyor (risk-on) → +1 · yükseliyor / çelişki → −1
+// Skor = oyların toplamı. Skor gereken teyit sayısını YUKARI keserse AL,
+// eksi tarafta AŞAĞI keserse SAT. Açık oyların hepsi aynı yöndeyse "GÜÇLÜ".
+// Her şey her barda hesaplanır (CW10002); yalnızca çizim anahtarlara bağlıdır.
+//
+// Stop  : AL için son swing dibi (d0), SAT için son swing tepesi (y0);
+//         yoksa ya da fiyatın yanlış tarafındaysa 1.5 × ATR(14).
+// Hedef : 1R ve 2R (R = giriş ile stop arası mesafe).
+// ═══════════════════════════════════════════════════════════════════════════
+sk_sz  = sig_szStr == "Çok küçük" ? size.tiny : sig_szStr == "Küçük" ? size.small : size.normal
+sk_atr = ta.atr(14)
+trEma  = ta.ema(close, sig_trLen)
+trUp   = close > trEma and trEma >= nz(trEma[1], trEma)
+trDn   = close < trEma and trEma <= nz(trEma[1], trEma)
+
+sk_msb  = sig_cMSB ? piyasa : 0
+sk_zm   = sig_cZM  ? zm_yapi : 0
+sk_z    = sig_cZ   ? (z >= 1.0 ? 1 : z <= -1.0 ? -1 : 0) : 0
+sk_trd  = sig_cTrd ? (trUp ? 1 : trDn ? -1 : 0) : 0
+sk_reg  = sig_cReg and domOk ? (riskOn ? 1 : (riskOff or celiski) ? -1 : 0) : 0
+sk_n    = (sig_cMSB ? 1 : 0) + (sig_cZM ? 1 : 0) + (sig_cZ ? 1 : 0) + (sig_cTrd ? 1 : 0) + (sig_cReg and useDom ? 1 : 0)
+sk      = sk_msb + sk_zm + sk_z + sk_trd + sk_reg
+sk_need = math.max(1, math.min(sig_min, sk_n))
+
+// ── Sinyal: skor eşiği kesiyor mu? ─────────────────────────────────────────
+var int   sk_lastBuy  = na
+var int   sk_lastSell = na
+var int   sk_sonBar   = na
+var int   sk_sonYon   = 0
+var float sk_sonFiy   = na
+
+sk_okBar = sig_conf ? barstate.isconfirmed : true
+sk_upX   = sk_n > 0 and sk >= sk_need  and nz(sk[1]) < sk_need
+sk_dnX   = sk_n > 0 and sk <= -sk_need and nz(sk[1]) > -sk_need
+sigBuy   = sk_upX and sk_okBar and (na(sk_lastBuy)  or bar_index - sk_lastBuy  >= sig_cool)
+sigSell  = sk_dnX and sk_okBar and (na(sk_lastSell) or bar_index - sk_lastSell >= sig_cool)
+
+// ── Yardımcılar ────────────────────────────────────────────────────────────
+sk_stop(bool al) =>
+    float s = al ? d0 : y0
+    bool mantikli = not na(s) and (al ? s < close : s > close)
+    mantikli ? s : al ? close - 1.5 * sk_atr : close + 1.5 * sk_atr
+
+sk_oy(int v) => v > 0 ? "▲ yükseliş" : v < 0 ? "▼ düşüş" : "• kararsız"
+
+sk_renk(int s, int n) =>
+    float r = n > 0 ? float(s) / n : 0.0
+    r >= 0 ? color.from_gradient(r, 0.0, 1.0, colNe, sig_colBuy) : color.from_gradient(r, -1.0, 0.0, sig_colSell, colNe)
+
+// Etiketin üzerine gelince görünen açıklama
+sk_aciklama(bool al, float stp) =>
+    float risk = math.abs(close - stp)
+    float h1   = al ? close + risk     : close - risk
+    float h2   = al ? close + 2 * risk : close - 2 * risk
+    string t = (al ? "BİRLEŞİK AL" : "BİRLEŞİK SAT") + " · skor " + fsI(sk) + " / " + str.tostring(sk_n)
+    t += "\n────────────"
+    if sig_cMSB
+        t += "\nFiyat yapısı: " + sk_oy(sk_msb)
+    if sig_cZM
+        t += "\nσ yapısı: " + sk_oy(sk_zm)
+    if sig_cZ
+        t += "\nAyrışma: " + sk_oy(sk_z) + " (" + fs(z) + "σ)"
+    if sig_cTrd
+        t += "\nTrend EMA" + str.tostring(sig_trLen) + ": " + sk_oy(sk_trd)
+    if sig_cReg and useDom
+        t += "\nUSDT.D rejimi: " + sk_oy(sk_reg)
+    if dio_on
+        t += "\nDİO: " + dio_durum + " (" + f2(dio_osc, "0.00") + ")"
+    t += "\n────────────"
+    t += "\nGiriş: " + str.tostring(close, format.mintick)
+    t += "\nStop: " + str.tostring(stp, format.mintick) + " (" + fs1((stp / close - 1) * 100) + "%)"
+    t += "\nHedef 1R: " + str.tostring(h1, format.mintick) + " (" + fs1((h1 / close - 1) * 100) + "%)"
+    t += "\nHedef 2R: " + str.tostring(h2, format.mintick) + " (" + fs1((h2 / close - 1) * 100) + "%)"
+    t
+
+sk_col = sk_renk(sk, sk_n)
+
+// ── Etiketler (fiyat paneli) ───────────────────────────────────────────────
+var label[] sk_L = array.new<label>()
+
+if sig_on and sigBuy
+    stpB = sk_stop(true)
+    array.push(sk_L, label.new(bar_index, low, (sk == sk_n ? "GÜÇLÜ AL" : "AL") + "\n" + str.tostring(sk) + "/" + str.tostring(sk_n),
+         yloc = yloc.belowbar, style = label.style_label_up, color = sig_colBuy, textcolor = color.white,
+         size = sk_sz, tooltip = sk_aciklama(true, stpB), force_overlay = true))
+if sig_on and sigSell
+    stpS = sk_stop(false)
+    array.push(sk_L, label.new(bar_index, high, (sk == -sk_n ? "GÜÇLÜ SAT" : "SAT") + "\n" + str.tostring(-sk) + "/" + str.tostring(sk_n),
+         yloc = yloc.abovebar, style = label.style_label_down, color = sig_colSell, textcolor = color.white,
+         size = sk_sz, tooltip = sk_aciklama(false, stpS), force_overlay = true))
+while array.size(sk_L) > sig_keep
+    label.delete(array.shift(sk_L))
+
+if sigBuy
+    sk_lastBuy := bar_index
+    sk_sonBar  := bar_index
+    sk_sonYon  := 1
+    sk_sonFiy  := close
+if sigSell
+    sk_lastSell := bar_index
+    sk_sonBar   := bar_index
+    sk_sonYon   := -1
+    sk_sonFiy   := close
+
+// ── Görsel çıktılar ────────────────────────────────────────────────────────
+plot(sk, "Birleşik skor", color = sk_col, display = display.data_window)
+plot(sig_trShow ? trEma : na, "Trend EMA", color = trUp ? color.new(sig_colBuy, 25) : trDn ? color.new(sig_colSell, 25) : color.new(colNe, 25), linewidth = 2, force_overlay = true)
+plotshape(sig_strip, "Skor şeridi", shape.square, location.bottom, color.new(sk_col, 10), size = size.tiny)
+bgcolor(sig_on and sigBuy ? color.new(sig_colBuy, 82) : sig_on and sigSell ? color.new(sig_colSell, 82) : na, title = "Sinyal barı vurgusu (alt panel)")
+barcolor(sig_bars ? (sk == 0 ? color(na) : sk_col) : dio_on and dio_bars ? dio_col(dio_osc) : na, title = "Mum rengi (DİO / skor)")
+
+// ── Alarmlar ───────────────────────────────────────────────────────────────
+alertcondition(sigBuy,            "⚡ Birleşik AL",                  "{{ticker}} ({{interval}}) — Birleşik AL sinyali @ {{close}}")
+alertcondition(sigSell,           "⚡ Birleşik SAT",                 "{{ticker}} ({{interval}}) — Birleşik SAT sinyali @ {{close}}")
+alertcondition(sigBuy or sigSell, "⚡ Birleşik sinyal (AL veya SAT)", "{{ticker}} ({{interval}}) — Birleşik sinyal @ {{close}}")
+
+if sig_alertOn and (sigBuy or sigSell)
+    stpA = sk_stop(sigBuy)
+    alert(syminfo.ticker + " " + timeframe.period + " · " + (sigBuy ? "BİRLEŞİK AL" : "BİRLEŞİK SAT") +
+         " @ " + str.tostring(close, format.mintick) + " · skor " + fsI(sk) + "/" + str.tostring(sk_n) +
+         " · stop " + str.tostring(stpA, format.mintick), alert.freq_once_per_bar_close)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BÖLÜM 31: 📋 BİLGİ PANELİ
+//
+// Tek tablo; açık / koyu temaya uyar (chart.bg_color / chart.fg_color).
+// table.new içindeki force_overlay sabit olmak zorunda → iki tablo açılır,
+// seçilen panele göre yalnızca biri doldurulur.
+// En yakın destek / direnç: AÇIK olan tüm modüllerin seviyeleri (Pivot, BOLL,
+// SRL, MSB kutuları, LuxAlgo OB, Fibo, ATH) taranır, fiyata en yakını seçilir.
+// ═══════════════════════════════════════════════════════════════════════════
+db_sz = db_szStr == "Çok küçük" ? size.tiny : db_szStr == "Küçük" ? size.small : size.normal
+db_p  = db_pos == "Sağ üst"  ? position.top_right    : db_pos == "Sağ orta" ? position.middle_right :
+     db_pos == "Sağ alt"  ? position.bottom_right : db_pos == "Sol üst"  ? position.top_left     :
+     db_pos == "Sol orta" ? position.middle_left  : db_pos == "Sol alt"  ? position.bottom_left  :
+     db_pos == "Orta üst" ? position.top_center   : position.bottom_center
+
+var table dbT_P = table.new(db_p, 2, 24, bgcolor = color.new(chart.bg_color, 6), frame_color = color.new(chart.fg_color, 70),
+     frame_width = 1, border_color = color.new(chart.fg_color, 88), border_width = 1, force_overlay = true)
+var table dbT_Z = table.new(db_p, 2, 24, bgcolor = color.new(chart.bg_color, 6), frame_color = color.new(chart.fg_color, 70),
+     frame_width = 1, border_color = color.new(chart.fg_color, 88), border_width = 1)
+
+db_satir(table t, int r, string k, string v, color vc, color bg) =>
+    table.cell(t, 0, r, k, text_color = color.new(chart.fg_color, 25), text_size = db_sz, text_halign = text.align_left, bgcolor = bg)
+    table.cell(t, 1, r, v, text_color = vc, text_size = db_sz, text_halign = text.align_left, bgcolor = bg)
+
+sr_ekle(float[] lv, string[] kaynak, float v, string s) =>
+    if not na(v) and v > 0
+        array.push(lv, v)
+        array.push(kaynak, s)
+
+sr_yakin(float[] lv, string[] kaynak, float fiy, bool yukari) =>
+    float  best = na
+    string bs   = ""
+    int    n    = array.size(lv)
+    if n > 0
+        for i = 0 to n - 1
+            v  = array.get(lv, i)
+            ok = yukari ? v > fiy : v < fiy
+            if ok and (na(best) or (yukari ? v < best : v > best))
+                best := v
+                bs   := array.get(kaynak, i)
+    [best, bs]
+
+f_rep(string s, int n) =>
+    string out = ""
+    if n > 0
+        for i = 1 to n
+            out += s
+    out
+
+f_tfAd() =>
+    string m = str.tostring(timeframe.multiplier)
+    timeframe.isseconds ? m + "sn" :
+         timeframe.isminutes ? (timeframe.multiplier % 60 == 0 ? str.tostring(int(timeframe.multiplier / 60)) + "S" : m + "dk") :
+         timeframe.isdaily ? m + "G" : timeframe.isweekly ? m + "H" : timeframe.ismonthly ? m + "A" : timeframe.period
+
+lux_icinde(float[] tops, float[] btms, int ext) =>
+    bool ic = false
+    int  n  = math.min(ext, array.size(tops))
+    if n > 0
+        for i = 0 to n - 1
+            ic := ic or (close <= array.get(tops, i) and close >= array.get(btms, i))
+    ic
+
+if barstate.islast
+    table.clear(dbT_P, 0, 0, 1, 23)
+    table.clear(dbT_Z, 0, 0, 1, 23)
+    if db_on
+        t   = db_pane == "Fiyat paneli" ? dbT_P : dbT_Z
+        det = db_mode == "Detaylı"
+        int r = 0
+
+        // ── Başlık ──
+        db_satir(t, r, "⚡ AYR · MSB-OB", syminfo.ticker + " · " + f_tfAd(), chart.fg_color, color.new(chart.fg_color, 86))
+        r += 1
+
+        // ── Genel görünüm (birleşik skor) ──
+        skAbs = math.abs(sk)
+        skYon = sk_n > 0 and sk == sk_n ? "▲▲ GÜÇLÜ YÜKSELİŞ" : sk >= sk_need ? "▲ YÜKSELİŞ" : sk > 0 ? "△ yükselişe eğilim" :
+             sk_n > 0 and sk == -sk_n ? "▼▼ GÜÇLÜ DÜŞÜŞ" : sk <= -sk_need ? "▼ DÜŞÜŞ" : sk < 0 ? "▽ düşüşe eğilim" : "• KARARSIZ"
+        db_satir(t, r, "Genel görünüm", skYon + "  " + fsI(sk) + "/" + str.tostring(sk_n) + "  " + f_rep("■", skAbs) + f_rep("□", sk_n - skAbs),
+             sk_col, color.new(sk_col, 85))
+        r += 1
+
+        // ── Son sinyal ve o günden bu yana sonuç ──
+        if na(sk_sonBar)
+            db_satir(t, r, "Son sinyal", "henüz yok", colNe, color(na))
+        else
+            perf = (close / sk_sonFiy - 1) * 100 * sk_sonYon
+            db_satir(t, r, "Son sinyal", (sk_sonYon > 0 ? "AL" : "SAT") + " · " + str.tostring(bar_index - sk_sonBar) + " bar önce · sonuç " + fs1(perf) + "%",
+                 perf >= 0 ? colUp : colDn, color(na))
+        r += 1
+
+        // ── Ayrışma ──
+        db_satir(t, r, "Ayrışma (σ)", fs(z) + "σ · " + durum, durCol, color(na))
+        r += 1
+        if det
+            db_satir(t, r, "Süre · pencere zirvesi", str.tostring(sure) + " bar " + (z >= 0 ? "▲" : "▼") + " · " + f2(zMax, "0.0") + "σ", colNe, color(na))
+            r += 1
+            db_satir(t, r, "Beklenen fiyat", str.tostring(expPrice, format.mintick) + " · boşluk " + fs1(gapPct) + "%", colNe, color(na))
+            r += 1
+            db_satir(t, r, "β · korelasyon", f2(beta, "0.00") + " (" + betaS + ") · " + f2(corr, "0.00") + " (" + korS + ")", colNe, color(na))
+            r += 1
+            db_satir(t, r, "Göreli hacim", na(volX) ? "—" : f2(volX, "0.00") + "× · " + volS, not na(volX) and volX >= 2.0 ? color.orange : colNe, color(na))
+            r += 1
+            if useDom
+                db_satir(t, r, "USDT.D rejimi", rejS + (domOk ? " (" + fs1(domChg) + "%)" : ""), rejCol, color(na))
+                r += 1
+
+        // ── Yapı ──
+        db_satir(t, r, "Fiyat yapısı", piyasa == 1 ? "▲ yükseliş (MSB)" : "▼ düşüş (MSB)", piyasa == 1 ? colUp : colDn, color(na))
+        r += 1
+        db_satir(t, r, "σ yapısı", zm_yapi == 1 ? "▲ coin güçleniyor" : "▼ coin zayıflıyor", zm_yapi == 1 ? colUp : colDn, color(na))
+        r += 1
+        if det
+            trTxt = trUp ? "▲ üstünde, yükseliyor" : trDn ? "▼ altında, düşüyor" : "• karışık"
+            db_satir(t, r, "Trend EMA" + str.tostring(sig_trLen), trTxt + " · " + fs1((close / trEma - 1) * 100) + "%", trUp ? colUp : trDn ? colDn : colNe, color(na))
+            r += 1
+            uyum = piyasa == 1 and zm_yapi == 1 ? "coin kendi gücüyle yükseliyor" : piyasa == 1 ? "yükseliş piyasadan, coin geride" :
+                 zm_yapi == 1 ? "düşüş piyasadan, coin dirençli" : "coin piyasadan da zayıf"
+            db_satir(t, r, "Yorum", uyum, piyasa == zm_yapi ? (piyasa == 1 ? colUp : colDn) : color.orange, color(na))
+            r += 1
+            if dio_on and dio_tbl
+                db_satir(t, r, "DİO (ilgi)", f2(dio_osc, "0.00") + " · " + dio_durum + (dio_oiOk ? " · OI ✓" : ""), dio_col(dio_osc), color(na))
+                r += 1
+
+        // ── En yakın destek / direnç ──
+        srLv = array.new_float()
+        srSr = array.new_string()
+        for l in Levels
+            if l.display
+                sr_ekle(srLv, srSr, l.levelH, "Pivot " + str.tostring(l.length))
+                sr_ekle(srLv, srSr, l.levelL, "Pivot " + str.tostring(l.length))
+        if showBoll
+            sr_ekle(srLv, srSr, bollUpper, "BOLL üst")
+            sr_ekle(srLv, srSr, bollLower, "BOLL alt")
+        if srl_on and srlSigma > 0
+            for i = 0 to 4
+                if i < srl_nRes
+                    sr_ekle(srLv, srSr, srlBasis + (srl_mult + i * srl_step) * srlSigma, "SRL R" + str.tostring(i + 1))
+                if i < srl_nSup
+                    sr_ekle(srLv, srSr, srlBasis - (srl_mult + i * srl_step) * srlSigma, "SRL S" + str.tostring(i + 1))
+        if show_msb
+            for bx in bu_ob_kutular
+                sr_ekle(srLv, srSr, box.get_top(bx),    "Bu-OB")
+                sr_ekle(srLv, srSr, box.get_bottom(bx), "Bu-OB")
+            for bx in be_ob_kutular
+                sr_ekle(srLv, srSr, box.get_top(bx),    "Be-OB")
+                sr_ekle(srLv, srSr, box.get_bottom(bx), "Be-OB")
+            for bx in bu_bb_kutular
+                sr_ekle(srLv, srSr, box.get_top(bx),    "Bu-BB")
+                sr_ekle(srLv, srSr, box.get_bottom(bx), "Bu-BB")
+            for bx in be_bb_kutular
+                sr_ekle(srLv, srSr, box.get_top(bx),    "Be-BB")
+                sr_ekle(srLv, srSr, box.get_bottom(bx), "Be-BB")
+        if showOB
+            nB = math.min(obBullExt, array.size(bull_top))
+            if nB > 0
+                for i = 0 to nB - 1
+                    sr_ekle(srLv, srSr, array.get(bull_top, i), "LuxAlgo OB ▲")
+                    sr_ekle(srLv, srSr, array.get(bull_btm, i), "LuxAlgo OB ▲")
+            nS = math.min(obBearExt, array.size(bear_top))
+            if nS > 0
+                for i = 0 to nS - 1
+                    sr_ekle(srLv, srSr, array.get(bear_top, i), "LuxAlgo OB ▼")
+                    sr_ekle(srLv, srSr, array.get(bear_btm, i), "LuxAlgo OB ▼")
+        if fib_onP
+            [fLv, fCl, fNm] = fib_build(fib_top, fib_bot, fib_zeroTop)
+            if array.size(fLv) > 0
+                for i = 0 to array.size(fLv) - 1
+                    sr_ekle(srLv, srSr, array.get(fLv, i), "Fibo " + array.get(fNm, i))
+        if ath_on
+            sr_ekle(srLv, srSr, fib_chartHi, "Grafik ATH")
+            if array.size(ath_wH_a) > 0
+                sr_ekle(srLv, srSr, array.get(ath_wH_a, array.size(ath_wH_a) - 1), "Önceki hafta zirvesi")
+            if array.size(ath_mH_a) > 0
+                sr_ekle(srLv, srSr, array.get(ath_mH_a, array.size(ath_mH_a) - 1), "Önceki ay zirvesi")
+
+        [dirV, dirS] = sr_yakin(srLv, srSr, close, true)
+        [desV, desS] = sr_yakin(srLv, srSr, close, false)
+        db_satir(t, r, "Direnç ⛔", na(dirV) ? "— (açık modülde seviye yok)" : str.tostring(dirV, format.mintick) + " · " + fs1((dirV / close - 1) * 100) + "% · " + dirS, colDn, color(na))
+        r += 1
+        db_satir(t, r, "Destek 🛟", na(desV) ? "— (açık modülde seviye yok)" : str.tostring(desV, format.mintick) + " · " + fs1((desV / close - 1) * 100) + "% · " + desS, colUp, color(na))
+        r += 1
+
+        // ── Fiyat bir OB bölgesinin içinde mi? ──
+        if det
+            luxBu = showOB and lux_icinde(bull_top, bull_btm, obBullExt)
+            luxBe = showOB and lux_icinde(bear_top, bear_btm, obBearExt)
+            obTxt = msb_buOBin ? "Bu-OB içinde (destek)" : msb_buBBin ? "Bu-BB içinde (destek)" : luxBu ? "LuxAlgo OB ▲ içinde (destek)" :
+                 msb_beOBin ? "Be-OB içinde (direnç)" : msb_beBBin ? "Be-BB içinde (direnç)" : luxBe ? "LuxAlgo OB ▼ içinde (direnç)" : "bölge dışında"
+            obCol = msb_buOBin or msb_buBBin or luxBu ? colUp : msb_beOBin or msb_beBBin or luxBe ? colDn : colNe
+            db_satir(t, r, "OB bölgesi", obTxt, obCol, color(na))
+            r += 1
+
+        // ── Uyarılar ──
+        if str.contains(symBtc, ":" + syminfo.ticker)
+            db_satir(t, r, "⚠ Uyarı", "Grafik = BTC → ayrışma ≈ 0 (anlamsız)", color.orange, color(na))
+            r += 1
+        if sk_n == 0
+            db_satir(t, r, "⚠ Uyarı", "Hiç sinyal bileşeni açık değil", color.orange, color(na))
+            r += 1
