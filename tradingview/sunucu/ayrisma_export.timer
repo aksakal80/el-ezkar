@@ -1,0 +1,11 @@
+[Unit]
+Description=Ayrisma - Piyasa Uyumu taraması zamanlayıcı (saatte bir, :02:30)
+
+[Timer]
+# Saat başı mum kapandıktan sonra çalışır; 4 saatlik mumlar da saat başında kapandığı için ikisini de yakalar.
+OnCalendar=*-*-* *:02:30
+Persistent=true
+Unit=ayrisma_export.service
+
+[Install]
+WantedBy=timers.target

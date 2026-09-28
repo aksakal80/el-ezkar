@@ -1,0 +1,22 @@
+[Unit]
+Description=Ayrisma - Piyasa Uyumu taraması (tek geçiş, ayrisma.json üretir)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/root/projelerim
+ExecStart=/root/venv/bin/python3 /root/projelerim/ayrisma_export.py
+# Ayarları değiştirmek için (isteğe bağlı), örn.:
+# Environment=AYR_MIN_HACIM=5000000
+# Environment=AYR_HARIC_EK=ABC,XYZ
+Nice=10
+TimeoutStartSec=15min
+
+# Güvenlik sıkılaştırma — root ile çalıştığı için ProtectHome KULLANILMAZ
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=false
+ProtectHome=false

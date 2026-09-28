@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ayrışma · Piyasa Uyumu</title>
+<!--
+  Ayrışma · Piyasa Uyumu paneli — veri: ayrisma.json (ayrisma_export.py, saatlik).
+  Grafik: TradingView Lightweight Charts™ — Copyright (c) 2025 TradingView, Inc. — https://www.tradingview.com/
+  Apache 2.0 lisansı. Grafiğin sol altındaki TradingView logosu lisansın istediği bağlantıdır; kaldırmayın.
+-->
+<script>try{if(localStorage.getItem("radar_theme")==="dark")document.documentElement.classList.add("dark");}catch(e){}</script>
+<style>
+:root{--bg:#f7f9fc;--kart:#ffffff;--bd:#d3dbe4;--yz:#1f2733;--sol:#5c6875;--vur:#2f6fed;--dip:#c8342f;--tav:#0e8a4f;
+  --uyumsuz:#e8590c;--alt:#eef2f6;--grid:#eef2f6;--baslik:#6c5516;--sari:#b8860b}
+.dark{--bg:#11161d;--kart:#161b22;--bd:#31404f;--yz:#c3cedb;--sol:#8794a3;--vur:#549ee8;--dip:#e2706b;--tav:#3fb27a;
+  --uyumsuz:#ff8a4c;--alt:#1c2128;--grid:#1d252f;--baslik:#e5c97d;--sari:#d9b14c}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--yz);font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;margin:0;padding:14px 18px 30px}
+a{color:var(--vur);text-decoration:none}
+.ust{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:.85rem}
+.ust .bosluk{flex:1}
+.ust button{background:var(--alt);color:var(--yz);border:1px solid var(--bd);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.95rem}
+h1{font-size:1.15rem;color:var(--baslik);margin:12px 0 2px}
+.altbaslik{color:var(--sol);font-size:.82rem;margin:0 0 12px}
+.ozet{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-bottom:12px}
+.kart{background:var(--kart);border:1px solid var(--bd);border-radius:10px;padding:10px 12px}
+.kart small{color:var(--sol);font-size:.75rem;display:block;margin-bottom:4px}
+.kart .buyuk{font-size:1.25rem;font-weight:700}
+.kart .satir{font-size:.8rem;color:var(--sol);margin-top:4px;line-height:1.45}
+.oy{display:flex;justify-content:space-between;gap:8px;font-size:.78rem;padding:2px 0;border-top:1px dashed var(--bd)}
+.oy:first-of-type{border-top:0}
+.kontrol{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.btn{background:var(--alt);color:var(--yz);border:1px solid var(--bd);border-radius:8px;padding:6px 12px;font-size:.86rem;cursor:pointer;font-family:inherit}
+.btn.aktif{background:var(--vur);border-color:var(--vur);color:#fff}
+.kontrol input[type=text],.kontrol select{background:var(--kart);color:var(--yz);border:1px solid var(--bd);border-radius:8px;padding:6px 10px;font-size:.88rem;font-family:inherit}
+.kontrol input[type=text]{width:150px;text-transform:uppercase}
+.kontrol label{font-size:.84rem;color:var(--sol);display:flex;align-items:center;gap:4px;cursor:pointer}
+.filtre{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.cip{background:var(--kart);border:1px solid var(--bd);border-radius:999px;padding:4px 10px;font-size:.8rem;cursor:pointer;color:var(--yz);font-family:inherit}
+.cip.aktif{border-color:var(--vur);box-shadow:0 0 0 1px var(--vur) inset}
+.cip b{margin-left:4px;color:var(--sol);font-weight:600}
+.nokta{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.tablo-kap{overflow-x:auto;background:var(--kart);border:1px solid var(--bd);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:.82rem}
+th,td{padding:6px 8px;border-bottom:1px solid var(--bd);text-align:right;white-space:nowrap}
+th{position:sticky;top:0;background:var(--alt);color:var(--sol);font-weight:600;font-size:.76rem;cursor:pointer;user-select:none}
+td.sol,th.sol{text-align:left}
+td.durum{white-space:normal;min-width:230px;text-align:left}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--alt)}
+tbody tr.secili{background:var(--alt);box-shadow:inset 3px 0 0 var(--vur)}
+.yildiz{cursor:pointer;color:var(--sol);font-size:1rem;padding:0 2px}
+.yildiz.dolu{color:var(--sari)}
+.coin{font-weight:700}
+.poz{color:var(--tav)}.neg{color:var(--dip)}.mut{color:var(--sol)}
+.zbar{display:inline-block;position:relative;width:70px;height:8px;background:var(--alt);border-radius:4px;vertical-align:middle;margin-left:6px}
+.zbar i{position:absolute;top:0;height:8px;border-radius:4px}
+.zbar::after{content:"";position:absolute;left:50%;top:-2px;width:1px;height:12px;background:var(--sol);opacity:.6}
+.ek{color:var(--sol);font-size:.76rem;display:block}
+.yeni{background:var(--vur);color:#fff;border-radius:4px;font-size:.66rem;padding:0 4px;margin-left:4px;vertical-align:middle}
+#detay{background:var(--kart);border:1px solid var(--bd);border-radius:10px;padding:10px 12px;margin-bottom:12px}
+#detay .dbas{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:6px}
+#detay .dbas h2{font-size:1.05rem;margin:0}
+#uyumSatir{font-size:.9rem;font-weight:600;padding:6px 10px;border-radius:8px;margin-bottom:8px}
+#grafik{height:560px;width:100%}
+.not{color:var(--sol);font-size:.78rem;line-height:1.5}
+details{background:var(--kart);border:1px solid var(--bd);border-radius:10px;padding:8px 12px;margin:12px 0}
+details summary{cursor:pointer;font-weight:600;font-size:.86rem}
+.lejant td{text-align:left;white-space:normal;border-bottom:1px dashed var(--bd)}
+.hata{color:var(--dip);font-weight:600}
+.bayat{color:var(--uyumsuz);font-weight:600}
+@media (max-width:760px){
+  body{padding:10px 10px 24px}
+  .gm{display:none}
+  #grafik{height:470px}
+  td.durum{min-width:170px}
+}
+</style>
+</head>
+<body>
+<div class="ust">
+  <a href="/">← Panel Merkezi</a>
+  <a href="piyasa_pano.html">🧭 Piyasa Panosu</a>
+  <a href="dom_panel.html">🌐 Dominans</a>
+  <a href="rsi_grafik.html">📈 RSI Grafiği</a>
+  <span class="bosluk"></span>
+  <span id="saat" class="mut"></span>
+  <button id="tema" title="Gece / gündüz">🌙</button>
+</div>
+<h1>🧭 Ayrışma · Piyasa Uyumu</h1>
+<p class="altbaslik">OTHERS coinleri (ilk 10 hariç) majör piyasaya (BTC + ETH) göre · coinin fiyatı piyasanın durumuyla uyumlu mu? · kapanmış mumlar · saatte bir güncellenir</p>
+
+<section class="ozet" id="ozet"><div class="kart">Yükleniyor…</div></section>
+
+<section id="detay" hidden>
+  <div class="dbas">
+    <h2 id="dAd">—</h2>
+    <span id="dBilgi" class="mut"></span>
+    <span class="bosluk" style="flex:1"></span>
+    <a id="dTv" target="_blank" rel="noopener">📈 TradingView ↗</a>
+    <a id="dRsi" target="_blank" rel="noopener">RSI grafiği ↗</a>
+    <button class="btn" id="dKapat" title="Kapat">✕</button>
+  </div>
+  <div id="uyumSatir">—</div>
+  <div id="grafik"></div>
+  <p class="not">Üst: mumlar · Orta: ayrışma (σ) — yeşil alan coin majörlerden güçlü, kırmızı zayıf; gri kesikli çizgi altcoin grubu; ±1σ arası uyumlu, ±2σ belirgin · Alt şerit: her barın uyum durumu. İmleci grafikte gezdirince üstteki satır o barın durumunu yazar.</p>
+</section>
+
+<div class="kontrol">
+  <span class="tfler"><button class="btn" data-tf="1h">1 saat</button> <button class="btn" data-tf="4h">4 saat</button></span>
+  <input type="text" id="ara" placeholder="Coin ara…" spellcheck="false" autocomplete="off">
+  <select id="sira" title="Sıralama">
+    <option value="z">Ayrışma: güçlü → zayıf</option>
+    <option value="zr">Ayrışma: zayıf → güçlü</option>
+    <option value="dz">Son 6 barda en çok güçlenen</option>
+    <option value="dzr">Son 6 barda en çok zayıflayan</option>
+    <option value="sure">Durumu yeni değişenler önce</option>
+    <option value="qv">24s hacim</option>
+    <option value="ch">24s değişim</option>
+  </select>
+  <label title="Ayrışma bölgesi (güçlü / uyumlu / zayıf) son 3 barda değişen coinler"><input type="checkbox" id="yeniMi"> yalnız son 3 barda bölge değiştirenler</label>
+</div>
+<div class="filtre" id="filtre"></div>
+
+<div class="tablo-kap">
+  <table>
+    <thead><tr>
+      <th class="sol" title="İzleme listesi (bu tarayıcıda saklanır)">★</th>
+      <th class="sol">Coin</th>
+      <th>Fiyat</th>
+      <th>24s</th>
+      <th title="Coinin majör piyasaya göre birikmiş ayrışması (σ)">Ayrışma</th>
+      <th class="gm" title="Ayrışmanın son 6 bardaki değişimi">Δ6</th>
+      <th class="sol">Durum</th>
+      <th title="Coin kaç bardır aynı ayrışma bölgesinde (güçlü / uyumlu / zayıf)">Süre</th>
+      <th class="gm" title="BTC+ETH'ye duyarlılık">β</th>
+      <th class="gm" title="Majörlerle korelasyon (uyum gücü)">r</th>
+      <th class="gm">Hacim</th>
+      <th class="gm">Fonlama</th>
+      <th class="gm sol">Son 48 bar</th>
+    </tr></thead>
+    <tbody id="govde"><tr><td colspan="13" class="sol mut">Yükleniyor…</td></tr></tbody>
+  </table>
+</div>
+
+<details>
+  <summary>Durumlar nasıl okunur?</summary>
+  <table class="lejant" id="lejant"></table>
+  <p class="not"><b>Piyasa yönü</b> BTC (%70) + ETH (%30) sepetinin birikmiş hareketinin kendi oynaklığına oranıdır: ≥ +0,5σ ↑, ≤ −0,5σ ↓, arası ↔ yatay.
+  <b>Ayrışma</b> coinin getirisinden piyasanın açıkladığı kısım (β × piyasa) çıkarıldıktan sonra kalanın birikimidir (σ): ≥ +1 güçlü, ≤ −1 zayıf, arası uyumlu.
+  <b>Altcoin grubu</b> taranan tüm coinlerin bar bar medyan getirisidir; "bütün altlar" / "yalnız bu coin" ayrımı bununla yapılır.
+  <b>Dominans rejimi</b> USDT.D, BTC.D ve OTHERS.D'nin (×2 oy) 12 saatlik değişimlerini kendi oynaklıklarına göre oylar; ETH.D yalnız bilgi amaçlıdır.
+  TradingView'daki "AYRIŞMA + MSB-OB" göstergesiyle aynı formüller kullanılır.</p>
+</details>
+<p class="not" id="altNot">Yatırım tavsiyesi değildir.</p>
+
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+(function () {
+'use strict';
+
+/* veri.ayaydin.tr'de aynı-origin vekiller kullanılır; başka yerde açılırsa sunucuya gidilir. */
+var BASE = (location.hostname === 'veri.ayaydin.tr' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? '' : 'https://veri.ayaydin.tr';
+var VERI_URL = BASE + '/ayrisma.json';
+var TF_IV = { '1h': '60', '4h': '240' }, TF_SN = { '1h': 3600, '4h': 14400 }, TV_IV = { '1h': '60', '4h': '240' };
+var TF_AD = { '1h': '1 saat', '4h': '4 saat' };
+var PENCERE = { '1h': { B: 168, A: 24 }, '4h': { B: 120, A: 30 } };   // sunucuyla aynı (DATA'dan da okunur)
+var MAJOR = { BTCUSDT: 0.70, ETHUSDT: 0.30 };
+var UYUM_BANT = 1.0, PIYASA_ESIK = 0.5;
+var TR_OFS = 3 * 3600;                 // grafik ekseni Türkiye saati
+var DETAY_MUM = 700;                   // grafikte ısınma sonrası ~450 bar görünür
+var YENILE_MS = 5 * 60 * 1000;
+
+var DATA = null, TF = '1h', FILTRE = 'tum', SIRA = 'z', ARAMA = '', YENI = false, SECILI = null;
+var FAV = favOku();
+var chart = null, S = {}, DETAY = null, detayNo = 0;
+
+/* ---------- yardımcılar ---------- */
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function nf(v, d) { return (v === null || v === undefined || isNaN(v)) ? '—' : Number(v).toLocaleString('tr-TR', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+function sgn(v, d) { return (v === null || v === undefined || isNaN(v)) ? '—' : (v > 0 ? '+' : '') + nf(v, d); }
+function ondalik(p) { if (!(p > 0)) return 2; if (p >= 1000) return 2; if (p >= 1) return 4; return Math.min(10, Math.ceil(-Math.log10(p)) + 3); }
+function fiyatFmt(p) { return nf(p, ondalik(Math.abs(p))); }
+function hacimFmt(v) { return !(v > 0) ? '—' : v >= 1e9 ? nf(v / 1e9, 2) + ' Mr' : v >= 1e6 ? nf(v / 1e6, 1) + ' Mn' : nf(v / 1e3, 0) + ' B'; }
+function css(ad) { return getComputedStyle(document.documentElement).getPropertyValue(ad).trim(); }
+function jget(u, tekrar) {
+  return fetch(u, { cache: 'no-store' }).then(function (r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).catch(function (e) {
+    if (!tekrar) throw e;
+    return new Promise(function (ok) { setTimeout(ok, 2500); }).then(function () { return jget(u, tekrar - 1); });
+  });
+}
+function zamanTR(ms) {
+  try {
+    return new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' })
+      .format(new Date(ms)).replace(',', '');
+  } catch (e) { return ''; }
+}
+function favOku() { try { return new Set(JSON.parse(localStorage.getItem('ayrisma_fav') || '[]')); } catch (e) { return new Set(); } }
+function favYaz() { try { localStorage.setItem('ayrisma_fav', JSON.stringify(Array.from(FAV))); } catch (e) { /* yoksay */ } }
+
+/* ---------- durumlar (sunucu ve göstergeyle aynı) ---------- */
+function uclu(v, e) { return v >= e ? 1 : v <= -e ? -1 : 0; }
+function durumMetni(m, c) {
+  if (m === 1 && c === 1) return 'Coin piyasayı önden çekiyor — göreli güçlü';
+  if (m === 1 && c === 0) return 'Uyumlu yükseliş — coin piyasayı takip ediyor';
+  if (m === 1 && c === -1) return 'UYUMSUZ — piyasa yükselirken coin geride';
+  if (m === -1 && c === 1) return 'Coin düşüşe direniyor — piyasa dönünce ilk toparlananlardan olabilir';
+  if (m === -1 && c === 0) return 'Uyumlu düşüş — coin piyasayla birlikte düşüyor';
+  if (m === -1 && c === -1) return 'Coin piyasadan da zayıf — en olumsuz durum';
+  if (c === 1) return 'Piyasa yatay — coin kendi gücüyle yükseliyor';
+  if (c === -1) return 'Piyasa yatay — coin kendi zayıflığıyla geriliyor';
+  return 'Piyasa yatay, coin uyumlu — belirgin bir durum yok';
+}
+function ton(m, c) {
+  if (m === 1 && c === -1) return 9;
+  if (m === 1 && c === 1) return 2;
+  if (m === -1 && c === -1) return -2;
+  if (c === 1 || (m === 1 && c === 0)) return 1;
+  if (c === -1 || (m === -1 && c === 0)) return -1;
+  return 0;
+}
+function grupEki(c, g) {
+  if (c === 1 && g === 1) return 'bütün altlar güçlü';
+  if (c === 1) return 'yalnız bu coin güçlü';
+  if (c === -1 && g === -1) return 'bütün altlar zayıf';
+  if (c === -1) return 'yalnız bu coin zayıf';
+  if (g === 1) return 'altlar önde, coin henüz katılmadı';
+  if (g === -1) return 'altlar geride, coin dayanıyor';
+  return '';
+}
+function tonRenk(t, soluk) {
+  var R = { 2: css('--tav'), 1: css('--tav'), 9: css('--uyumsuz'), 0: css('--sol'), '-1': css('--dip'), '-2': css('--dip') }[t];
+  return soluk && (t === 1 || t === -1 || t === 0) ? hexAlfa(R, t === 0 ? 0.45 : 0.55) : R;
+}
+function hexAlfa(hex, a) {
+  var h = hex.replace('#', '');
+  if (h.length === 3) h = h.split('').map(function (x) { return x + x; }).join('');
+  var n = parseInt(h, 16);
+  return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+}
+var FILTRELER = [
+  { k: 'tum', ad: 'Tümü' },
+  { k: 'fav', ad: '⭐ İzlemem' },
+  { k: '2', ad: 'Önden çeken', t: 2 },
+  { k: '1', ad: 'Lehte', t: 1 },
+  { k: '9', ad: 'Uyumsuz', t: 9 },
+  { k: '0', ad: 'Nötr', t: 0 },
+  { k: '-1', ad: 'Aleyhte', t: -1 },
+  { k: '-2', ad: 'En zayıf', t: -2 }
+];
+
+/* ---------- hesap (ayrisma_export.py'nin JS karşılığı) ---------- */
+function rollMean(x, n) {
+  var out = new Array(x.length).fill(null), s = 0;
+  for (var i = 0; i < x.length; i++) {
+    s += x[i];
+    if (i >= n) s -= x[i - n];
+    if (i >= n - 1) out[i] = s / n;
+  }
+  return out;
+}
+function rollStd(x, n) {
+  var m = rollMean(x, n), m2 = rollMean(x.map(function (v) { return v * v; }), n);
+  return m.map(function (a, i) { return a === null ? null : Math.sqrt(Math.max(m2[i] - a * a, 0)); });
+}
+function getiriler(k) {
+  var out = new Array(k.length).fill(0);
+  for (var i = 1; i < k.length; i++) {
+    var a = k[i - 1], b = k[i];
+    out[i] = (a > 0 && b > 0) ? Math.log(b / a) : 0;
+  }
+  return out;
+}
+function ayrisma(r, rm, B, A) {
+  var n = r.length, mM = rollMean(rm, B), mR = rollMean(r, B);
+  var mMR = rollMean(rm.map(function (v, i) { return v * r[i]; }), B), mMM = rollMean(rm.map(function (v) { return v * v; }), B);
+  var beta = new Array(n).fill(1);
+  for (var i = 0; i < n; i++) {
+    if (mM[i] !== null) {
+      var vr = mMM[i] - mM[i] * mM[i];
+      if (vr > 0) beta[i] = Math.min(4, Math.max(-1, (mMR[i] - mM[i] * mR[i]) / vr));
+    }
+  }
+  var resid = r.map(function (v, i) { return v - beta[i] * rm[i]; });
+  var sd = rollStd(resid, B), phi = 1 - 1 / A, k = A / Math.sqrt(2 * A - 1), z = new Array(n).fill(0), s = 0;
+  for (var j = 0; j < n; j++) {
+    s = j === 0 ? resid[j] : s * phi + resid[j];
+    z[j] = (sd[j] !== null && sd[j] > 0) ? s / (sd[j] * k) : 0;
+  }
+  return { z: z, beta: beta };
+}
+function piyasaZ(rm, B, A) {
+  var sd = rollStd(rm, B), phi = 1 - 1 / A, k = A / Math.sqrt(2 * A - 1), out = new Array(rm.length).fill(0), s = 0;
+  for (var i = 0; i < rm.length; i++) {
+    s = s * phi + rm[i];
+    out[i] = (sd[i] !== null && sd[i] > 0) ? s / (sd[i] * k) : 0;
+  }
+  return out;
+}
+function mumlar(sym, tf) {
+  var u = BASE + '/ex/bybit/kline?category=linear&symbol=' + encodeURIComponent(sym) + '&interval=' + TF_IV[tf] + '&limit=' + DETAY_MUM;
+  return jget(u, 1).then(function (d) {
+    var liste = (d && d.result && d.result.list) || [], simdi = Date.now(), sn = TF_SN[tf] * 1000;
+    return liste.map(function (s) { return { t: +s[0], o: +s[1], h: +s[2], l: +s[3], c: +s[4] }; })
+      .filter(function (m) { return m.t + sn <= simdi; })
+      .sort(function (a, b) { return a.t - b.t; });
+  });
+}
+
+/* ---------- yükleme ---------- */
+function yukle() {
+  return jget(VERI_URL + '?t=' + Date.now(), 1).then(function (d) {
+    DATA = d;
+    if (!DATA.tf[TF]) TF = Object.keys(DATA.tf)[0];
+    ciz();
+  }).catch(function (e) {
+    $('ozet').innerHTML = '<div class="kart hata">Veri alınamadı (' + esc(e.message) + '). ayrisma_export zamanlayıcısı çalışıyor mu?</div>';
+    $('govde').innerHTML = '<tr><td colspan="13" class="sol hata">ayrisma.json okunamadı.</td></tr>';
+  });
+}
+function ciz() { ozetCiz(); filtreCiz(); tabloCiz(); tfButonlari(); }
+
+/* ---------- özet kartları ---------- */
+function ozetCiz() {
+  var T = DATA.tf[TF], p = T.piyasa, g = T.grup, rj = DATA.rejim || {};
+  var yas = (Date.now() - Date.parse(DATA.generated_at)) / 60000;
+  var sure = TF === '1h' ? 'son ' + T.lenA + ' saat' : 'son ' + Math.round(T.lenA * 4 / 24) + ' gün';
+  var pYon = p.m > 0 ? '↑ yükseliyor' : p.m < 0 ? '↓ düşüyor' : '↔ yatay';
+  var pRenk = p.m > 0 ? 'poz' : p.m < 0 ? 'neg' : 'mut';
+  var gMet = g.g > 0 ? 'altlar majörlerden güçlü' : g.g < 0 ? 'altlar majörlerden zayıf' : 'altlar majörlerle uyumlu';
+  var gRenk = g.g > 0 ? 'poz' : g.g < 0 ? 'neg' : 'mut';
+  var rjRenk = rj.durum === 'risk-on' ? 'poz' : (rj.durum === 'risk-off' || rj.durum === 'çelişki') ? 'neg' : 'mut';
+  var rjAd = { 'risk-on': 'Risk-on — altlara para giriyor', 'risk-off': 'Risk-off — altlardan çıkış', 'çelişki': 'ÇELİŞKİ — alt rallisi teyitsiz', 'nötr': 'Nötr', 'ısınıyor': 'Isınıyor — geçmiş birikiyor' }[rj.durum] || (rj.durum || '—');
+  var oylar = (rj.oylar || []).map(function (o) {
+    var oyT = o.oy > 0 ? '<span class="poz">+' + o.oy + '</span>' : o.oy < 0 ? '<span class="neg">' + o.oy + '</span>' : '<span class="mut">0</span>';
+    var zT = o.z === null || o.z === undefined ? (o.chg24 !== null && o.chg24 !== undefined ? '24s ' + sgn(o.chg24, 2) : '—') : sgn(o.z, 1) + 'σ';
+    return '<div class="oy"><span>' + esc(o.k) + ' <span class="mut">' + (o.deger !== null && o.deger !== undefined ? '%' + nf(o.deger, 2) : '') + '</span></span><span>' + zT + ' · oy ' + oyT + '</span></div>';
+  }).join('') + (rj.bilgi || []).map(function (o) {
+    var zT = o.z === null || o.z === undefined ? (o.chg24 !== null && o.chg24 !== undefined ? '24s ' + sgn(o.chg24, 2) : '—') : sgn(o.z, 1) + 'σ';
+    return '<div class="oy mut"><span>' + esc(o.k) + ' (bilgi)</span><span>' + zT + '</span></div>';
+  }).join('');
+  var isin = rj.durum === 'ısınıyor' ? '<div class="satir">Geçmiş: ' + (rj.ornek || 0) + '/' + (rj.gerekli || '—') + ' saatlik örnek.' +
+    (rj.dom_regime ? ' Dominans panelinin yorumu: <b>' + esc(rj.dom_regime) + '</b>' : '') + '</div>' : '';
+  $('ozet').innerHTML =
+    '<div class="kart"><small>Piyasa yönü · BTC+ETH · ' + TF_AD[TF] + '</small><div class="buyuk ' + pRenk + '">' + pYon + '</div>' +
+      '<div class="satir">' + sure + ': ' + sgn(p.pct, 2) + '% · ' + sgn(p.z, 2) + 'σ' + (p.sure ? ' · ' + p.sure + ' bardır böyle' : '') + '</div></div>' +
+    '<div class="kart"><small>Altcoin grubu · ' + g.n + ' coin medyanı</small><div class="buyuk ' + gRenk + '">' + sgn(g.z, 2) + 'σ</div>' +
+      '<div class="satir">' + gMet + ' · ' + sure + ': ' + sgn(g.pct, 2) + '%</div></div>' +
+    '<div class="kart"><small>Dominans rejimi (para akışı) · puan ' + sgn(rj.puan, 0) + '/' + (rj.n || 4) + '</small><div class="buyuk ' + rjRenk + '" style="font-size:1rem">' + esc(rjAd) + '</div>' +
+      '<div class="satir">' + oylar + '</div>' + isin + '</div>' +
+    '<div class="kart"><small>Güncelleme</small><div class="buyuk' + (yas > 150 ? ' bayat' : '') + '" style="font-size:1rem">' + esc(DATA.updated_human || '') + '</div>' +
+      '<div class="satir">' + (yas > 150 ? '<span class="bayat">Veri ' + Math.round(yas / 60) + ' saattir güncellenmedi.</span><br>' : '') +
+      'Son kapanmış mum: ' + zamanTR(Date.parse(T.son_mum)) + ' · pencere β ' + T.lenB + ' / ayrışma ' + T.lenA + ' bar' +
+      (T.atlanan && (T.atlanan.hata || T.atlanan.kisa_gecmis) ? '<br>Atlanan: ' + T.atlanan.hata + ' hata, ' + T.atlanan.kisa_gecmis + ' kısa geçmiş' : '') + '</div></div>';
+  $('saat').textContent = DATA.updated_human || '';
+  $('altNot').textContent = DATA.uyari || 'Yatırım tavsiyesi değildir.';
+}
+
+/* ---------- filtre ve tablo ---------- */
+function satirlar() { return (DATA && DATA.tf[TF] && DATA.tf[TF].coins) || []; }
+function filtreCiz() {
+  var S0 = satirlar();
+  $('filtre').innerHTML = FILTRELER.map(function (f) {
+    var n = f.k === 'tum' ? S0.length : f.k === 'fav' ? S0.filter(function (r) { return FAV.has(r.s); }).length : S0.filter(function (r) { return r.ton === f.t; }).length;
+    var nokta = f.t !== undefined ? '<span class="nokta" style="background:' + tonRenk(f.t, false) + (f.t === 1 || f.t === -1 ? ';opacity:.6' : '') + '"></span>' : '';
+    return '<button class="cip' + (FILTRE === f.k ? ' aktif' : '') + '" data-f="' + f.k + '">' + nokta + esc(f.ad) + '<b>' + n + '</b></button>';
+  }).join('');
+}
+function sirala(a, b) {
+  var fa = FAV.has(a.s) ? 1 : 0, fb = FAV.has(b.s) ? 1 : 0;
+  if (FILTRE !== 'fav' && fa !== fb) return fb - fa;          // izleme listesi üstte
+  switch (SIRA) {
+    case 'zr': return (a.z || 0) - (b.z || 0);
+    case 'dz': return (b.dz6 || 0) - (a.dz6 || 0);
+    case 'dzr': return (a.dz6 || 0) - (b.dz6 || 0);
+    case 'sure': return (a.sure || 0) - (b.sure || 0) || (b.z || 0) - (a.z || 0);
+    case 'qv': return (b.qv || 0) - (a.qv || 0);
+    case 'ch': return (b.ch24 || 0) - (a.ch24 || 0);
+    default: return (b.z || 0) - (a.z || 0);
+  }
+}
+function spark(v, t) {
+  if (!v || v.length < 2) return '';
+  var w = 90, h = 22, lo = Math.min(-2, Math.min.apply(null, v)), hi = Math.max(2, Math.max.apply(null, v));
+  var y = function (x) { return (h - 1 - (x - lo) / (hi - lo) * (h - 2)).toFixed(1); };
+  var pts = v.map(function (x, i) { return (i * (w - 1) / (v.length - 1)).toFixed(1) + ',' + y(x); }).join(' ');
+  return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '"><rect x="0" y="' + y(1) + '" width="' + w + '" height="' + (y(-1) - y(1)).toFixed(1) +
+    '" fill="' + css('--alt') + '"/><line x1="0" x2="' + w + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="' + css('--bd') + '"/><polyline fill="none" stroke="' + tonRenk(t, false) +
+    '" stroke-width="1.5" points="' + pts + '"/></svg>';
+}
+function zBar(z) {
+  var v = Math.max(-4, Math.min(4, z || 0)), w = Math.abs(v) / 4 * 50, renk = v >= 0 ? css('--tav') : css('--dip');
+  return '<span class="zbar"><i style="background:' + renk + ';' + (v >= 0 ? 'left:50%' : 'left:' + (50 - w) + '%') + ';width:' + w + '%"></i></span>';
+}
+function tabloCiz() {
+  var rows = satirlar().filter(function (r) {
+    if (FILTRE === 'fav' && !FAV.has(r.s)) return false;
+    if (FILTRE !== 'tum' && FILTRE !== 'fav' && String(r.ton) !== FILTRE) return false;
+    if (ARAMA && r.s.indexOf(ARAMA) < 0) return false;
+    if (YENI && !(r.sure <= 3)) return false;
+    return true;
+  }).sort(sirala);
+  if (!rows.length) { $('govde').innerHTML = '<tr><td colspan="13" class="sol mut">Bu süzgece uyan coin yok.</td></tr>'; return; }
+  $('govde').innerHTML = rows.map(function (r) {
+    var renk = tonRenk(r.ton, false);
+    return '<tr data-s="' + esc(r.s) + '"' + (r.s === SECILI ? ' class="secili"' : '') + '>' +
+      '<td class="sol"><span class="yildiz' + (FAV.has(r.s) ? ' dolu' : '') + '" data-fav="' + esc(r.s) + '">' + (FAV.has(r.s) ? '★' : '☆') + '</span></td>' +
+      '<td class="sol coin">' + esc(r.s.replace(/USDT$/, '')) + '</td>' +
+      '<td>' + fiyatFmt(r.p) + '</td>' +
+      '<td class="' + (r.ch24 >= 0 ? 'poz' : 'neg') + '">' + sgn(r.ch24, 1) + '%</td>' +
+      '<td class="' + (r.z >= 1 ? 'poz' : r.z <= -1 ? 'neg' : 'mut') + '">' + sgn(r.z, 2) + 'σ' + zBar(r.z) + '</td>' +
+      '<td class="gm ' + (r.dz6 > 0 ? 'poz' : r.dz6 < 0 ? 'neg' : 'mut') + '">' + sgn(r.dz6, 2) + '</td>' +
+      '<td class="durum"><span class="nokta" style="background:' + renk + (r.ton === 1 || r.ton === -1 ? ';opacity:.6' : '') + '"></span>' +
+        '<span style="color:' + renk + '">' + esc(r.durum) + '</span>' + (r.ek ? '<span class="ek">' + esc(r.ek) + '</span>' : '') + '</td>' +
+      '<td>' + r.sure + (r.sure <= 3 ? '<span class="yeni">yeni</span>' : '') + '</td>' +
+      '<td class="gm">' + nf(r.beta, 2) + '</td>' +
+      '<td class="gm">' + nf(r.r, 2) + '</td>' +
+      '<td class="gm">' + hacimFmt(r.qv) + '</td>' +
+      '<td class="gm ' + (r.fr > 0 ? 'poz' : r.fr < 0 ? 'neg' : 'mut') + '">' + (r.fr === null || r.fr === undefined ? '—' : sgn(r.fr * 100, 4) + '%') + '</td>' +
+      '<td class="gm sol">' + spark(r.spark, r.ton) + '</td></tr>';
+  }).join('');
+}
+function tfButonlari() {
+  Array.prototype.forEach.call(document.querySelectorAll('[data-tf]'), function (b) { b.classList.toggle('aktif', b.getAttribute('data-tf') === TF); });
+}
+function lejantCiz() {
+  var L = [[1, 1], [1, 0], [1, -1], [-1, 1], [-1, 0], [-1, -1], [0, 1], [0, 0], [0, -1]];
+  $('lejant').innerHTML = '<tr><td><b>Piyasa</b></td><td><b>Coin</b></td><td><b>Durum</b></td></tr>' + L.map(function (x) {
+    var t = ton(x[0], x[1]);
+    return '<tr><td>' + (x[0] > 0 ? '↑' : x[0] < 0 ? '↓' : '↔') + '</td><td>' + (x[1] > 0 ? 'z ≥ +1 (güçlü)' : x[1] < 0 ? 'z ≤ −1 (zayıf)' : '−1 < z < +1 (uyumlu)') +
+      '</td><td><span class="nokta" style="background:' + tonRenk(t, false) + '"></span><span style="color:' + tonRenk(t, false) + '">' + durumMetni(x[0], x[1]) + '</span></td></tr>';
+  }).join('');
+}
+
+/* ---------- detay grafiği ---------- */
+function renkler() {
+  return { kart: css('--kart'), bd: css('--bd'), sol: css('--sol'), grid: css('--grid'), tav: css('--tav'), dip: css('--dip'), yz: css('--yz') };
+}
+function grafikKur() {
+  var LC = window.LightweightCharts, R = renkler();
+  if (chart) { chart.remove(); chart = null; }
+  chart = LC.createChart($('grafik'), {
+    autoSize: true,
+    layout: { background: { type: 'solid', color: R.kart }, textColor: R.sol, fontSize: 11, panes: { separatorColor: R.bd, separatorHoverColor: R.bd } },
+    grid: { vertLines: { color: R.grid }, horzLines: { color: R.grid } },
+    rightPriceScale: { borderColor: R.bd },
+    timeScale: { borderColor: R.bd, timeVisible: true, secondsVisible: false, rightOffset: 4 },
+    crosshair: { mode: LC.CrosshairMode.Normal },
+    localization: { locale: 'tr-TR' }
+  });
+  S.mum = chart.addSeries(LC.CandlestickSeries, { upColor: R.tav, downColor: R.dip, wickUpColor: R.tav, wickDownColor: R.dip, borderVisible: false }, 0);
+  S.z = chart.addSeries(LC.BaselineSeries, {
+    baseValue: { type: 'price', price: 0 }, lineWidth: 2, priceLineVisible: false,
+    topLineColor: R.tav, topFillColor1: hexAlfa(R.tav, 0.35), topFillColor2: hexAlfa(R.tav, 0.03),
+    bottomLineColor: R.dip, bottomFillColor1: hexAlfa(R.dip, 0.03), bottomFillColor2: hexAlfa(R.dip, 0.35),
+    priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
+  }, 1);
+  S.grup = chart.addSeries(LC.LineSeries, { color: R.sol, lineWidth: 1, lineStyle: LC.LineStyle.Dashed, priceLineVisible: false,
+    lastValueVisible: false, crosshairMarkerVisible: false }, 1);
+  [[2, R.sol, LC.LineStyle.Dashed], [1, R.sol, LC.LineStyle.Dotted], [0, R.bd, LC.LineStyle.Solid], [-1, R.sol, LC.LineStyle.Dotted], [-2, R.sol, LC.LineStyle.Dashed]]
+    .forEach(function (x) { S.z.createPriceLine({ price: x[0], color: x[1], lineWidth: 1, lineStyle: x[2], axisLabelVisible: false, title: '' }); });
+  S.serit = chart.addSeries(LC.HistogramSeries, { priceLineVisible: false, lastValueVisible: false, priceFormat: { type: 'price', precision: 0, minMove: 1 } }, 2);
+  S.serit.priceScale().applyOptions({ scaleMargins: { top: 0, bottom: 0 } });
+  var p = chart.panes();
+  p[0].setStretchFactor(3); p[1].setStretchFactor(1.6); p[2].setStretchFactor(0.22);
+  chart.subscribeCrosshairMove(function (param) {
+    if (!DETAY) return;
+    if (!param || param.time === undefined) { satirYaz(DETAY.n - 1); return; }
+    var i = DETAY.idx[param.time];
+    satirYaz(i === undefined ? DETAY.n - 1 : i);
+  });
+}
+function satirYaz(i) {
+  if (!DETAY || i < 0) return;
+  var m = DETAY.m[i], c = DETAY.c[i], t = ton(m, c), renk = tonRenk(t, false);
+  var g = DETAY.grup[DETAY.zaman[i]], gEk = g === undefined ? '' : grupEki(c, uclu(g, UYUM_BANT));
+  $('uyumSatir').innerHTML = '<span class="mut">' + zamanTR(DETAY.ms[i]) + '</span> · Piyasa (BTC+ETH) ' + (m > 0 ? '↑' : m < 0 ? '↓' : '↔') + ' ' + sgn(DETAY.pct[i], 2) +
+    '% · Coin ' + sgn(DETAY.z[i], 2) + 'σ → ' + esc(durumMetni(m, c)) + (gEk ? ' · <span class="mut">' + esc(gEk) + '</span>' : '');
+  $('uyumSatir').style.color = renk;
+  $('uyumSatir').style.background = hexAlfa(renk, t === 0 ? 0.08 : 0.14);
+}
+function detayAc(sym) {
+  SECILI = sym;
+  var no = ++detayNo, tf = TF, P = (DATA && DATA.tf[tf]) ? { B: DATA.tf[tf].lenB, A: DATA.tf[tf].lenA } : PENCERE[tf];
+  $('detay').hidden = false;
+  $('dAd').textContent = sym.replace(/USDT$/, '') + ' · ' + TF_AD[tf];
+  $('dBilgi').textContent = 'yükleniyor…';
+  $('uyumSatir').textContent = '—';
+  $('dTv').href = 'https://tr.tradingview.com/chart/?symbol=' + encodeURIComponent('BYBIT:' + sym + '.P') + '&interval=' + TV_IV[tf];
+  $('dRsi').href = 'rsi_grafik.html?coin=' + encodeURIComponent(sym) + '&tf=' + tf;
+  try { history.replaceState(null, '', '?coin=' + encodeURIComponent(sym) + '&tf=' + tf); } catch (e) { /* yoksay */ }
+  tabloCiz();
+  Promise.all([mumlar(sym, tf), mumlar('BTCUSDT', tf), mumlar('ETHUSDT', tf)]).then(function (res) {
+    if (no !== detayNo) return;                         // bu arada başka coin seçildi
+    var coin = res[0], maj = { BTCUSDT: res[1], ETHUSDT: res[2] };
+    var harita = {}; Object.keys(maj).forEach(function (s) { harita[s] = {}; maj[s].forEach(function (m) { harita[s][m.t] = m.c; }); });
+    var ortak = maj.BTCUSDT.map(function (m) { return m.t; }).filter(function (t) { return harita.ETHUSDT[t] !== undefined; });
+    var cMap = {}; coin.forEach(function (m) { cMap[m.t] = m; });
+    var bas = ortak.findIndex(function (t) { return cMap[t] !== undefined; });
+    if (bas < 0 || ortak.length - bas < P.B + 2 * P.A) throw new Error('bu coin için yeterli geçmiş yok (' + (bas < 0 ? 0 : ortak.length - bas) + ' bar)');
+    var rm = new Array(ortak.length).fill(0);
+    Object.keys(MAJOR).forEach(function (s) {
+      var g = getiriler(ortak.map(function (t) { return harita[s][t]; }));
+      rm = rm.map(function (v, i) { return v + MAJOR[s] * g[i]; });
+    });
+    var mk = piyasaZ(rm, P.B, P.A).slice(bas);
+    var zaman = ortak.slice(bas), rmC = rm.slice(bas);
+    var kap = zaman.map(function (t) { return cMap[t] ? cMap[t].c : null; });
+    var az = ayrisma(getiriler(kap), rmC, P.B, P.A);
+    var isin = P.B + 2 * P.A;                           // ısınma: bu bardan önceki değerler gösterilmez
+    var D = { n: 0, idx: {}, m: [], c: [], z: [], pct: [], ms: [], zaman: [], grup: {} };
+    (DATA.tf[tf].grup_seri || []).forEach(function (x) { D.grup[x[0] + TR_OFS] = x[1]; });
+    var mumV = [], zV = [], sV = [], gV = [];
+    for (var i = isin; i < zaman.length; i++) {
+      var t = Math.floor(zaman[i] / 1000) + TR_OFS, m = cMap[zaman[i]];
+      var mm = uclu(mk[i], PIYASA_ESIK), cc = uclu(az.z[i], UYUM_BANT), tt = ton(mm, cc);
+      var toplam = 0; for (var j = Math.max(1, i - P.A + 1); j <= i; j++) toplam += rmC[j];
+      D.idx[t] = D.n; D.m.push(mm); D.c.push(cc); D.z.push(az.z[i]); D.pct.push((Math.exp(toplam) - 1) * 100); D.ms.push(zaman[i]); D.zaman.push(t); D.n++;
+      if (m) mumV.push({ time: t, open: m.o, high: m.h, low: m.l, close: m.c });
+      zV.push({ time: t, value: +az.z[i].toFixed(3) });
+      sV.push({ time: t, value: 1, color: tt === 0 ? hexAlfa(css('--sol'), 0.35) : tonRenk(tt, true) });
+      if (D.grup[t] !== undefined) gV.push({ time: t, value: D.grup[t] });
+    }
+    DETAY = D;
+    grafikKur();
+    S.mum.setData(mumV); S.z.setData(zV); S.serit.setData(sV); S.grup.setData(gV);
+    var dec = ondalik(mumV.length ? mumV[mumV.length - 1].close : 1);
+    S.mum.applyOptions({ priceFormat: { type: 'price', precision: dec, minMove: Math.pow(10, -dec) } });
+    chart.timeScale().fitContent();
+    satirYaz(D.n - 1);
+    $('dBilgi').textContent = 'β ' + nf(az.beta[az.beta.length - 1], 2) + ' · pencere β ' + P.B + ' / ayrışma ' + P.A + ' bar · kapanmış mumlar';
+  }).catch(function (e) {
+    if (no !== detayNo) return;
+    $('dBilgi').innerHTML = '<span class="hata">Grafik yüklenemedi: ' + esc(e.message) + '</span>';
+  });
+  $('detay').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function detayKapat() {
+  $('detay').hidden = true; SECILI = null; DETAY = null; detayNo++;
+  if (chart) { chart.remove(); chart = null; }
+  try { history.replaceState(null, '', location.pathname); } catch (e) { /* yoksay */ }
+  tabloCiz();
+}
+
+/* ---------- olaylar ---------- */
+function olaylar() {
+  document.addEventListener('click', function (e) {
+    var el = e.target;
+    if (el.closest('[data-tf]')) {
+      TF = el.closest('[data-tf]').getAttribute('data-tf');
+      if (DATA) ciz();
+      if (SECILI) detayAc(SECILI);
+      return;
+    }
+    var f = el.closest('[data-f]');
+    if (f) { FILTRE = f.getAttribute('data-f'); filtreCiz(); tabloCiz(); return; }
+    var y = el.closest('[data-fav]');
+    if (y) {
+      var s = y.getAttribute('data-fav');
+      if (FAV.has(s)) FAV.delete(s); else FAV.add(s);
+      favYaz(); filtreCiz(); tabloCiz(); return;
+    }
+    var tr = el.closest('tr[data-s]');
+    if (tr) { detayAc(tr.getAttribute('data-s')); return; }
+  });
+  $('ara').addEventListener('input', function () { ARAMA = this.value.trim().toUpperCase(); tabloCiz(); });
+  $('sira').addEventListener('change', function () { SIRA = this.value; tabloCiz(); });
+  $('yeniMi').addEventListener('change', function () { YENI = this.checked; tabloCiz(); });
+  $('dKapat').addEventListener('click', detayKapat);
+  $('tema').textContent = document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
+  $('tema').addEventListener('click', function () {
+    var k = document.documentElement.classList.toggle('dark');
+    try { localStorage.setItem('radar_theme', k ? 'dark' : 'light'); } catch (e) { /* yoksay */ }
+    $('tema').textContent = k ? '☀️' : '🌙';
+    lejantCiz();
+    if (DATA) ciz();
+    if (SECILI) detayAc(SECILI);
+  });
+}
+
+/* ---------- başlat ---------- */
+olaylar();
+lejantCiz();
+var q = new URLSearchParams(location.search);
+if (q.get('tf') && TF_IV[q.get('tf')]) TF = q.get('tf');
+yukle().then(function () {
+  var c = (q.get('coin') || '').toUpperCase();
+  if (c && DATA) detayAc(/USDT$/.test(c) ? c : c + 'USDT');
+});
+setInterval(function () { if (!document.hidden) yukle(); }, YENILE_MS);
+})();
+</script>
+</body>
+</html>
