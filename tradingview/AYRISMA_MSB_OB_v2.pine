@@ -17,7 +17,7 @@
 //    🧹 Sade görünüm: yardımcı katmanları (Pivot, BOLL, SRL, ATH, Fibo,
 //       LuxAlgo OB, DİO çizgisi) tek tuşla gizler.
 //    🎨 Osilatör: güce göre gradyan renk, gradyan dolgu, ±1σ nötr bant,
-//       altta skor şeridi, sinyal barında panel vurgusu.
+//       altta skor şeridi.
 //
 //  DÜZELTİLEN HATALAR
 //    • Be-OB döngüsünde eksik "else" → kırılan kutu için de alarm çalıyordu.
@@ -200,18 +200,18 @@ bgcolor(regCol, title="USDT.D rejimi (fiyat paneli)", force_overlay = true)
 zCol  = z >= 0 ? colUp : colDn
 // Güce göre gradyan: |z| = 0 → nötr gri, |z| ≥ eşik → tam renk
 zGrad = color.from_gradient(math.abs(z), 0.0, zTh, colNe, zCol)
-plot(showShadow ? expPrice : na, "Beklenen fiyat (β×piyasa)", color=color.new(colNe, 20), linewidth=1, force_overlay=true)
+plot(showShadow ? expPrice : na, "Beklenen fiyat (β×piyasa)", color=colNe, linewidth=1, force_overlay=true)
 
 gapOn = showGap and bantSid > 0 and not na(expPrice)
 gapHi = math.max(nz(expPrice, close), close)
 gapLo = math.min(nz(expPrice, close), close)
 plotcandle(gapOn ? expPrice : na, gapOn ? gapHi : na, gapOn ? gapLo : na, gapOn ? close : na,
            title="Ayrışma boşluğu", color=color.new(zCol, 100 - bantSid * 2),
-           bordercolor=color.new(zCol, 100), wickcolor=color.new(zCol, 100), force_overlay=true)
+           bordercolor=#00000000, wickcolor=#00000000, force_overlay=true)
 
 // ── Alt panel: osilatör ─────────────────────────────────────────────────────
 pZ    = plot(z,   "Ayrışma (σ)",    color=zGrad, linewidth=2)
-pZero = plot(0.0, "Piyasa çizgisi", color=color.new(colNe, 100))
+pZero = plot(0.0, "Piyasa çizgisi", color=#00000000)
 // Gradyan dolgu: çizgide koyu, sıfır çizgisine doğru şeffaflaşır
 fTopC = z >= 0 ? color.new(colUp, 60)  : color.new(colDn, 100)
 fBotC = z >= 0 ? color.new(colUp, 100) : color.new(colDn, 60)
@@ -226,8 +226,8 @@ fill(hBandU, hBandD, color = showBand ? color.new(colNe, 93) : na, title = "Nöt
 
 xUp = ta.crossover(z,  zTh)
 xDn = ta.crossunder(z, -zTh)
-plotshape(xUp ? z : na, "Pozitif ayrışma", shape.circle, location.absolute, color.new(colUp, 0), size=size.tiny)
-plotshape(xDn ? z : na, "Negatif ayrışma", shape.circle, location.absolute, color.new(colDn, 0), size=size.tiny)
+plotshape(xUp ? z : na, "Pozitif ayrışma", shape.circle, location.absolute, colUp, size=size.tiny)
+plotshape(xDn ? z : na, "Negatif ayrışma", shape.circle, location.absolute, colDn, size=size.tiny)
 
 // ── Metin yardımcıları (Türkçe ondalık: virgül) ─────────────────────────────
 f2(_x, _f) => str.replace_all(str.tostring(_x, _f), ".", ",")
@@ -772,9 +772,8 @@ plot(show_ma4 ? ma4f : na, "MA #4", color = ma4_col, linewidth = ma_kal, force_o
 // ═══════════════════════════════════════════════════════════════════════════
 // BÖLÜM 16: BOLLINGER BANT EĞRİLERİ
 // ═══════════════════════════════════════════════════════════════════════════
-plot(showBoll ? bollUpper : na, "BOLL Üst",  color=color.new(color.orange, 75), linewidth=1, display=display.none, force_overlay=true)
-plot(showBoll and showMB ? bollBasis : na, "BOLL Orta", color=color.new(color.gray, 80), linewidth=1, display=display.none, force_overlay=true)
-plot(showBoll ? bollLower : na, "BOLL Alt",  color=color.new(color.purple, 75), linewidth=1, display=display.none, force_overlay=true)
+// v2: Buradaki üç plot() display.none ile zaten GÖRÜNMEZDİ ama 64'lük plot
+//     sınırından 6 hak yiyordu → kaldırıldı. Bantlar BÖLÜM 14'te çizgi olarak çizilir.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // BÖLÜM 18: EMİR BLOKLARI (LuxAlgo) — © LuxAlgo (CC BY-NC-SA 4.0)
@@ -860,8 +859,7 @@ mitigated_bear = remove_mitigated(bear_top, bear_btm, bear_left, bear_avg, obTar
 set_order_blocks(bull_top, bull_btm, bull_left, bull_avg, obBullExt, obBgBull, obBullCss, obBullAvg)
 set_order_blocks(bear_top, bear_btm, bear_left, bear_avg, obBearExt, obBgBear, obBearCss, obBearAvg)
 
-plot(showOB ? bull_ob : na, "Yükseliş OB", obBullCss, 2, plot.style_linebr, offset = -obLength, display = display.none, force_overlay = true)
-plot(showOB ? bear_ob : na, "Düşüş OB",    obBearCss, 2, plot.style_linebr, offset = -obLength, display = display.none, force_overlay = true)
+// v2: display.none ile görünmeyen iki plot() kaldırıldı (plot sınırı). Alarmlar aşağıda duruyor.
 
 alertcondition(not na(bull_ob),  "Yükseliş OB Oluştu",          "Yükseliş emir bloğu tespit edildi")
 alertcondition(not na(bear_ob),  "Düşüş OB Oluştu",             "Düşüş emir bloğu tespit edildi")
@@ -1827,8 +1825,9 @@ dio_quiet = dio_on and ta.crossunder(dio_osc, dio_lower)
 dio_pane = dio_on and dio_mod == "Ayrışma paneline bindir" and not sade
 plot(dio_pane ? dio_osc * dio_olcek : na, "DİO",
      color = dio_osc >= dio_upper ? color.rgb(80, 210, 255) : color.new(color.rgb(40, 120, 235), 20), linewidth = dio_kal)
-plot(dio_pane and dio_seviye ? dio_upper * dio_olcek : na, "DİO aşırı ilgi", color = color.new(color.orange, 45), linewidth = 1, style = plot.style_circles)
-plot(dio_pane and dio_seviye ? dio_lower * dio_olcek : na, "DİO ilgisizlik", color = color.new(color.rgb(255, 200, 120), 45), linewidth = 1, style = plot.style_circles)
+// v2: plot() yerine hline() — hline 64'lük plot sınırına sayılmaz
+hline(dio_upper * dio_olcek, "DİO aşırı ilgi", color = dio_pane and dio_seviye ? #ff98008c : #00000000, linestyle = hline.style_dotted, linewidth = 1)
+hline(dio_lower * dio_olcek, "DİO ilgisizlik", color = dio_pane and dio_seviye ? #ffc8788c : #00000000, linestyle = hline.style_dotted, linewidth = 1)
 
 // ── Fiyat paneli: etiketler (mum rengi BÖLÜM 30'da — skor seçeneğiyle birlikte) ──
 plotshape(dio_tags and dio_panic, "DİO PANİK", shape.labelup,   location.belowbar, color.red,    text = "PANİK", textcolor = color.white, size = size.tiny, force_overlay = true)
@@ -1955,10 +1954,10 @@ if sigSell
     sk_sonFiy   := close
 
 // ── Görsel çıktılar ────────────────────────────────────────────────────────
-plot(sk, "Birleşik skor", color = sk_col, display = display.data_window)
-plot(sig_trShow ? trEma : na, "Trend EMA", color = trUp ? color.new(sig_colBuy, 25) : trDn ? color.new(sig_colSell, 25) : color.new(colNe, 25), linewidth = 2, force_overlay = true)
-plotshape(sig_strip, "Skor şeridi", shape.square, location.bottom, color.new(sk_col, 10), size = size.tiny)
-bgcolor(sig_on and sigBuy ? color.new(sig_colBuy, 82) : sig_on and sigSell ? color.new(sig_colSell, 82) : na, title = "Sinyal barı vurgusu (alt panel)")
+// NOT (plot sınırı 64): alertcondition 1, her plot/bgcolor/barcolor 1, rengi HESAPLANAN
+//     (color.new dahil) her renk argümanı +1 sayılır. Bu yüzden burada sabit renkler var.
+plot(sig_trShow ? trEma : na, "Trend EMA", color = #ffb300, linewidth = 2, force_overlay = true)
+plotshape(sig_strip, "Skor şeridi", shape.square, location.bottom, sk_col, size = size.tiny)
 barcolor(sig_bars ? (sk == 0 ? color(na) : sk_col) : dio_on and dio_bars ? dio_col(dio_osc) : na, title = "Mum rengi (DİO / skor)")
 
 // ── Alarmlar ───────────────────────────────────────────────────────────────
