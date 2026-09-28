@@ -89,7 +89,7 @@ details summary{cursor:pointer;font-weight:600;font-size:.86rem}
   <button id="tema" title="Gece / gündüz">🌙</button>
 </div>
 <h1>🧭 Ayrışma · Piyasa Uyumu</h1>
-<p class="altbaslik">OTHERS coinleri (ilk 10 hariç) majör piyasaya (BTC + ETH) göre · coinin fiyatı piyasanın durumuyla uyumlu mu? · kapanmış mumlar · saatte bir güncellenir</p>
+<p class="altbaslik">OTHERS coinleri (ilk 10 hariç) · piyasa durumu = piyasa (BTC, ETH, majörler) × para akışı (USDT.D, BTC.D, OTHERS.D) · coin bu duruma uyuyor mu? · kapanmış mumlar · saatte bir güncellenir</p>
 
 <section class="ozet" id="ozet"><div class="kart">Yükleniyor…</div></section>
 
@@ -104,15 +104,15 @@ details summary{cursor:pointer;font-weight:600;font-size:.86rem}
   </div>
   <div id="uyumSatir">—</div>
   <div id="grafik"></div>
-  <p class="not">Üst: mumlar · Orta: ayrışma (σ) — yeşil alan coin majörlerden güçlü, kırmızı zayıf; gri kesikli çizgi altcoin grubu; ±1σ arası uyumlu, ±2σ belirgin · Alt şerit: her barın uyum durumu. İmleci grafikte gezdirince üstteki satır o barın durumunu yazar.</p>
+  <p class="not">Üst: mumlar · Orta: coinin ayrışması (σ) — majörler ve alt sepeti birlikte çıkarıldıktan sonra kalan hareket; yeşil alan önde, kırmızı geride, ±1σ arası uyumlu · Alt şerit: her barda coinin durumu (yeşil önde · gri uyumlu · kırmızı geride). Para akışı yalnız güncel değer olarak bilinir; imleçle gezerken satır o barın majör yönünü ve coin durumunu yazar.</p>
 </section>
 
 <div class="kontrol">
   <span class="tfler"><button class="btn" data-tf="1h">1 saat</button> <button class="btn" data-tf="4h">4 saat</button></span>
   <input type="text" id="ara" placeholder="Coin ara…" spellcheck="false" autocomplete="off">
   <select id="sira" title="Sıralama">
-    <option value="z">Ayrışma: güçlü → zayıf</option>
-    <option value="zr">Ayrışma: zayıf → güçlü</option>
+    <option value="z">Ayrışma: önde → geride</option>
+    <option value="zr">Ayrışma: geride → önde</option>
     <option value="dz">Son 6 barda en çok güçlenen</option>
     <option value="dzr">Son 6 barda en çok zayıflayan</option>
     <option value="sure">Durumu yeni değişenler önce</option>
@@ -130,12 +130,12 @@ details summary{cursor:pointer;font-weight:600;font-size:.86rem}
       <th class="sol">Coin</th>
       <th>Fiyat</th>
       <th>24s</th>
-      <th title="Coinin majör piyasaya göre birikmiş ayrışması (σ)">Ayrışma</th>
+      <th title="Majörler ve alt sepeti birlikte çıkarıldıktan sonra coinin birikmiş ayrışması (σ)">Ayrışma</th>
       <th class="gm" title="Ayrışmanın son 6 bardaki değişimi">Δ6</th>
       <th class="sol">Durum</th>
       <th title="Coin kaç bardır aynı ayrışma bölgesinde (güçlü / uyumlu / zayıf)">Süre</th>
-      <th class="gm" title="BTC+ETH'ye duyarlılık">β</th>
-      <th class="gm" title="Majörlerle korelasyon (uyum gücü)">r</th>
+      <th class="gm" title="Coinin duyarlılığı: piyasaya (BTC+ETH+majörler, toplam) / alt sepetine (piyasadan bağımsız kısım)">β piy / alt</th>
+      <th class="gm" title="Piyasa modelinin coini ne kadar açıkladığı (korelasyon)">r</th>
       <th class="gm">Hacim</th>
       <th class="gm">Fonlama</th>
       <th class="gm sol">Son 48 bar</th>
@@ -145,13 +145,14 @@ details summary{cursor:pointer;font-weight:600;font-size:.86rem}
 </div>
 
 <details>
-  <summary>Durumlar nasıl okunur?</summary>
+  <summary>Nasıl hesaplanıyor, durumlar nasıl okunur?</summary>
+  <p class="not"><b>1) Piyasa:</b> BTC, ETH ve majörler (BTC ve ETH hariç ilk 10: XRP, BNB, SOL, DOGE, TRX, ADA — eşit ağırlıklı sepet), her biri ⅓ ağırlıkla. Birikmiş hareket kendi oynaklığına bölünür: ≥ +0,5σ ↑, ≤ −0,5σ ↓, arası ↔. TOTAL2 / TOTAL3 kullanılmaz.<br>
+  <b>2) Para akışı:</b> USDT.D ↓, BTC.D ↓, OTHERS.D ↑ (2 oy) altlar lehine oy verir. Dominanslar kısmen fiyattan türediği için (piyasa düşünce USDT.D mekanik yükselir) her birinin 12 saatlik değişiminden piyasanın aynı dönemdeki hareketinin açıkladığı kısım çıkarılır; oy yalnız kalan kısma göre verilir (±1σ). Çoğunluk → altlara giriyor / nötr / çıkıyor (nakde · BTC'ye).<br>
+  <b>3) Altlar için durum</b> = piyasa × akış (tablo aşağıda).<br>
+  <b>4) Coin:</b> getirisinden piyasa ve alt sepeti (taranan coinlerin medyan getirisi) birlikte, coinin kendi geçmiş duyarlılıklarıyla (β, son 1 hafta / 20 gün) çıkarılır; kalanın birikimi oynaklığına bölünür (σ): ≥ +1 önde, ≤ −1 geride, arası uyumlu.<br>
+  <b>Karne:</b> her coin durumu başladıktan sonraki pencere boyunca (1s: 24 bar, 4s: 30 bar) coinin getirisi ve alt sepetine göre fazla getirisi, bütün coinler üzerinden ölçülür. "Tüm barlar" satırı tabandır; bir durumun değeri tabandan farkıdır. Geçmiş sonuç geleceği garanti etmez.</p>
+  <table class="lejant" id="lejantOrtam"></table>
   <table class="lejant" id="lejant"></table>
-  <p class="not"><b>Piyasa yönü</b> BTC (%70) + ETH (%30) sepetinin birikmiş hareketinin kendi oynaklığına oranıdır: ≥ +0,5σ ↑, ≤ −0,5σ ↓, arası ↔ yatay.
-  <b>Ayrışma</b> coinin getirisinden piyasanın açıkladığı kısım (β × piyasa) çıkarıldıktan sonra kalanın birikimidir (σ): ≥ +1 güçlü, ≤ −1 zayıf, arası uyumlu.
-  <b>Altcoin grubu</b> taranan tüm coinlerin bar bar medyan getirisidir; "bütün altlar" / "yalnız bu coin" ayrımı bununla yapılır.
-  <b>Dominans rejimi</b> USDT.D, BTC.D ve OTHERS.D'nin (×2 oy) 12 saatlik değişimlerini kendi oynaklıklarına göre oylar; ETH.D yalnız bilgi amaçlıdır.
-  TradingView'daki "AYRIŞMA + MSB-OB" göstergesiyle aynı formüller kullanılır.</p>
 </details>
 <p class="not" id="altNot">Yatırım tavsiyesi değildir.</p>
 
@@ -166,10 +167,9 @@ var VERI_URL = BASE + '/ayrisma.json';
 var TF_IV = { '1h': '60', '4h': '240' }, TF_SN = { '1h': 3600, '4h': 14400 }, TV_IV = { '1h': '60', '4h': '240' };
 var TF_AD = { '1h': '1 saat', '4h': '4 saat' };
 var PENCERE = { '1h': { B: 168, A: 24 }, '4h': { B: 120, A: 30 } };   // sunucuyla aynı (DATA'dan da okunur)
-var MAJOR = { BTCUSDT: 0.70, ETHUSDT: 0.30 };
 var UYUM_BANT = 1.0, PIYASA_ESIK = 0.5;
 var TR_OFS = 3 * 3600;                 // grafik ekseni Türkiye saati
-var DETAY_MUM = 700;                   // grafikte ısınma sonrası ~450 bar görünür
+var DETAY_MUM = 700;
 var YENILE_MS = 5 * 60 * 1000;
 
 var DATA = null, TF = '1h', FILTRE = 'tum', SIRA = 'z', ARAMA = '', YENI = false, SECILI = null;
@@ -202,40 +202,36 @@ function zamanTR(ms) {
 }
 function favOku() { try { return new Set(JSON.parse(localStorage.getItem('ayrisma_fav') || '[]')); } catch (e) { return new Set(); } }
 function favYaz() { try { localStorage.setItem('ayrisma_fav', JSON.stringify(Array.from(FAV))); } catch (e) { /* yoksay */ } }
+function ok(v) { return v > 0 ? '↑' : v < 0 ? '↓' : '↔'; }
 
 /* ---------- durumlar (sunucu ve göstergeyle aynı) ---------- */
 function uclu(v, e) { return v >= e ? 1 : v <= -e ? -1 : 0; }
-function durumMetni(m, c) {
-  if (m === 1 && c === 1) return 'Coin piyasayı önden çekiyor — göreli güçlü';
-  if (m === 1 && c === 0) return 'Uyumlu yükseliş — coin piyasayı takip ediyor';
-  if (m === 1 && c === -1) return 'UYUMSUZ — piyasa yükselirken coin geride';
-  if (m === -1 && c === 1) return 'Coin düşüşe direniyor — piyasa dönünce ilk toparlananlardan olabilir';
-  if (m === -1 && c === 0) return 'Uyumlu düşüş — coin piyasayla birlikte düşüyor';
-  if (m === -1 && c === -1) return 'Coin piyasadan da zayıf — en olumsuz durum';
-  if (c === 1) return 'Piyasa yatay — coin kendi gücüyle yükseliyor';
-  if (c === -1) return 'Piyasa yatay — coin kendi zayıflığıyla geriliyor';
-  return 'Piyasa yatay, coin uyumlu — belirgin bir durum yok';
+function ortam(m, f) {
+  if (m === 1) return f === 1 ? [1, 'alt yükselişi'] : f === 0 ? [1, 'normal yükseliş'] : [-1, 'piyasa yükseliyor ama altlar eziliyor'];
+  if (m === -1) return f === 1 ? [0, 'piyasa düşüyor ama para altlara giriyor'] : f === 0 ? [-1, 'düşüş'] : [-1, 'risk-off — altlar sert düşebilir'];
+  return f === 1 ? [1, 'alt rotasyonu'] : f === 0 ? [0, 'yatay, belirgin akış yok'] : [-1, 'altlardan çıkış'];
 }
-function ton(m, c) {
-  if (m === 1 && c === -1) return 9;
-  if (m === 1 && c === 1) return 2;
-  if (m === -1 && c === -1) return -2;
-  if (c === 1 || (m === 1 && c === 0)) return 1;
-  if (c === -1 || (m === -1 && c === 0)) return -1;
+function durumMetni(a, c) {
+  if (a === 1 && c === 1) return 'EN GÜÇLÜ — ortam olumlu ve coin önde';
+  if (a === 1 && c === 0) return 'Uyumlu — ortam olumlu, coin birlikte gidiyor';
+  if (a === 1 && c === -1) return 'UYUMSUZ — ortam olumlu ama coin geride';
+  if (a === -1 && c === 1) return 'Akıntıya karşı güçlü — ortam olumsuz ama coin önde';
+  if (a === -1 && c === 0) return 'Uyumlu — ortam olumsuz, coin birlikte gidiyor';
+  if (a === -1 && c === -1) return 'EN ZAYIF — ortam olumsuz ve coin de geride';
+  if (c === 1) return 'Coin kendi gücüyle önde';
+  if (c === -1) return 'Coin kendi zayıflığıyla geride';
+  return 'Belirgin bir durum yok';
+}
+function ton(a, c) {
+  if (a === 1 && c === -1) return 9;
+  if (a === 1 && c === 1) return 2;
+  if (a === -1 && c === -1) return -2;
+  if (c === 1 || (a === 1 && c === 0)) return 1;
+  if (c === -1 || (a === -1 && c === 0)) return -1;
   return 0;
 }
-function grupEki(c, g) {
-  if (c === 1 && g === 1) return 'bütün altlar güçlü';
-  if (c === 1) return 'yalnız bu coin güçlü';
-  if (c === -1 && g === -1) return 'bütün altlar zayıf';
-  if (c === -1) return 'yalnız bu coin zayıf';
-  if (g === 1) return 'altlar önde, coin henüz katılmadı';
-  if (g === -1) return 'altlar geride, coin dayanıyor';
-  return '';
-}
-function tonRenk(t, soluk) {
-  var R = { 2: css('--tav'), 1: css('--tav'), 9: css('--uyumsuz'), 0: css('--sol'), '-1': css('--dip'), '-2': css('--dip') }[t];
-  return soluk && (t === 1 || t === -1 || t === 0) ? hexAlfa(R, t === 0 ? 0.45 : 0.55) : R;
+function tonRenk(t) {
+  return { 2: css('--tav'), 1: css('--tav'), 9: css('--uyumsuz'), 0: css('--sol'), '-1': css('--dip'), '-2': css('--dip') }[t];
 }
 function hexAlfa(hex, a) {
   var h = hex.replace('#', '');
@@ -246,7 +242,7 @@ function hexAlfa(hex, a) {
 var FILTRELER = [
   { k: 'tum', ad: 'Tümü' },
   { k: 'fav', ad: '⭐ İzlemem' },
-  { k: '2', ad: 'Önden çeken', t: 2 },
+  { k: '2', ad: 'En güçlü', t: 2 },
   { k: '1', ad: 'Lehte', t: 1 },
   { k: '9', ad: 'Uyumsuz', t: 9 },
   { k: '0', ad: 'Nötr', t: 0 },
@@ -276,23 +272,30 @@ function getiriler(k) {
   }
   return out;
 }
-function ayrisma(r, rm, B, A) {
-  var n = r.length, mM = rollMean(rm, B), mR = rollMean(r, B);
-  var mMR = rollMean(rm.map(function (v, i) { return v * r[i]; }), B), mMM = rollMean(rm.map(function (v) { return v * v; }), B);
-  var beta = new Array(n).fill(1);
+function carp(a, b) { return a.map(function (v, i) { return v * b[i]; }); }
+function model2(r, x1, x2, B, A) {
+  var n = r.length, m1 = rollMean(x1, B), m2 = rollMean(x2, B), mr = rollMean(r, B);
+  var m11 = rollMean(carp(x1, x1), B), m22 = rollMean(carp(x2, x2), B), m12 = rollMean(carp(x1, x2), B);
+  var m1r = rollMean(carp(x1, r), B), m2r = rollMean(carp(x2, r), B);
+  var fit = new Array(n).fill(0), btop = new Array(n).fill(1), balt = new Array(n).fill(null);
   for (var i = 0; i < n; i++) {
-    if (mM[i] !== null) {
-      var vr = mMM[i] - mM[i] * mM[i];
-      if (vr > 0) beta[i] = Math.min(4, Math.max(-1, (mMR[i] - mM[i] * mR[i]) / vr));
-    }
+    if (m1[i] === null) { fit[i] = x1[i]; continue; }
+    var c11 = m11[i] - m1[i] * m1[i], c22 = m22[i] - m2[i] * m2[i], c12 = m12[i] - m1[i] * m2[i];
+    var c1r = m1r[i] - m1[i] * mr[i], c2r = m2r[i] - m2[i] * mr[i], det = c11 * c22 - c12 * c12;
+    if (c11 > 0 && c22 > 0 && det > 1e-14 * c11 * c22) {
+      var b1 = Math.min(5, Math.max(-3, (c22 * c1r - c12 * c2r) / det)), b2 = Math.min(5, Math.max(-2, (c11 * c2r - c12 * c1r) / det));
+      fit[i] = b1 * x1[i] + b2 * x2[i]; btop[i] = b1 + b2 * (c12 / c11); balt[i] = b2;
+    } else if (c11 > 0) {
+      var b = Math.min(4, Math.max(-1, c1r / c11)); fit[i] = b * x1[i]; btop[i] = b;
+    } else fit[i] = x1[i];
   }
-  var resid = r.map(function (v, i) { return v - beta[i] * rm[i]; });
+  var resid = r.map(function (v, i) { return v - fit[i]; });
   var sd = rollStd(resid, B), phi = 1 - 1 / A, k = A / Math.sqrt(2 * A - 1), z = new Array(n).fill(0), s = 0;
   for (var j = 0; j < n; j++) {
     s = j === 0 ? resid[j] : s * phi + resid[j];
     z[j] = (sd[j] !== null && sd[j] > 0) ? s / (sd[j] * k) : 0;
   }
-  return { z: z, beta: beta };
+  return { z: z, fit: fit, btop: btop, balt: balt };
 }
 function piyasaZ(rm, B, A) {
   var sd = rollStd(rm, B), phi = 1 - 1 / A, k = A / Math.sqrt(2 * A - 1), out = new Array(rm.length).fill(0), s = 0;
@@ -326,37 +329,53 @@ function yukle() {
 function ciz() { ozetCiz(); filtreCiz(); tabloCiz(); tfButonlari(); }
 
 /* ---------- özet kartları ---------- */
+function karneSatir(ad, k, taban) {
+  if (!k) return '';
+  if (k.yetersiz) return '<div class="oy"><span>' + ad + '</span><span class="mut">yetersiz örnek (n=' + k.n + ')</span></div>';
+  var fark = taban && !taban.yetersiz ? k.fazla - taban.fazla : null;
+  var renk = fark === null ? '' : fark > 0.05 ? 'poz' : fark < -0.05 ? 'neg' : 'mut';
+  return '<div class="oy"><span>' + ad + '</span><span>sepete göre <b class="' + renk + '">' + sgn(k.fazla, 2) + '%</b>' +
+    (fark === null ? '' : ' <span class="' + renk + '">(taban ' + sgn(fark, 2) + ')</span>') + ' · %' + nf(k.fazla_poz, 0) + '↑ · n=' + k.n + '</span></div>';
+}
 function ozetCiz() {
-  var T = DATA.tf[TF], p = T.piyasa, g = T.grup, rj = DATA.rejim || {};
+  var T = DATA.tf[TF], p = T.piyasa, g = T.grup, rj = DATA.rejim || {}, o = T.ortam || { a: 0, metin: '—' }, kr = T.karne || {};
   var yas = (Date.now() - Date.parse(DATA.generated_at)) / 60000;
   var sure = TF === '1h' ? 'son ' + T.lenA + ' saat' : 'son ' + Math.round(T.lenA * 4 / 24) + ' gün';
   var pYon = p.m > 0 ? '↑ yükseliyor' : p.m < 0 ? '↓ düşüyor' : '↔ yatay';
-  var pRenk = p.m > 0 ? 'poz' : p.m < 0 ? 'neg' : 'mut';
-  var gMet = g.g > 0 ? 'altlar majörlerden güçlü' : g.g < 0 ? 'altlar majörlerden zayıf' : 'altlar majörlerle uyumlu';
-  var gRenk = g.g > 0 ? 'poz' : g.g < 0 ? 'neg' : 'mut';
-  var rjRenk = rj.durum === 'risk-on' ? 'poz' : (rj.durum === 'risk-off' || rj.durum === 'çelişki') ? 'neg' : 'mut';
-  var rjAd = { 'risk-on': 'Risk-on — altlara para giriyor', 'risk-off': 'Risk-off — altlardan çıkış', 'çelişki': 'ÇELİŞKİ — alt rallisi teyitsiz', 'nötr': 'Nötr', 'ısınıyor': 'Isınıyor — geçmiş birikiyor' }[rj.durum] || (rj.durum || '—');
-  var oylar = (rj.oylar || []).map(function (o) {
-    var oyT = o.oy > 0 ? '<span class="poz">+' + o.oy + '</span>' : o.oy < 0 ? '<span class="neg">' + o.oy + '</span>' : '<span class="mut">0</span>';
-    var zT = o.z === null || o.z === undefined ? (o.chg24 !== null && o.chg24 !== undefined ? '24s ' + sgn(o.chg24, 2) : '—') : sgn(o.z, 1) + 'σ';
-    return '<div class="oy"><span>' + esc(o.k) + ' <span class="mut">' + (o.deger !== null && o.deger !== undefined ? '%' + nf(o.deger, 2) : '') + '</span></span><span>' + zT + ' · oy ' + oyT + '</span></div>';
-  }).join('') + (rj.bilgi || []).map(function (o) {
-    var zT = o.z === null || o.z === undefined ? (o.chg24 !== null && o.chg24 !== undefined ? '24s ' + sgn(o.chg24, 2) : '—') : sgn(o.z, 1) + 'σ';
-    return '<div class="oy mut"><span>' + esc(o.k) + ' (bilgi)</span><span>' + zT + '</span></div>';
+  var ayakAd = { btc: 'BTC', eth: 'ETH', maj: 'Majörler' };
+  var ayaklar = Object.keys(ayakAd).map(function (k) {
+    var a = (p.ayak || {})[k]; if (!a) return '';
+    var rr = a.m > 0 ? 'poz' : a.m < 0 ? 'neg' : 'mut';
+    return '<div class="oy"><span>' + ayakAd[k] + (k === 'maj' && p.majorler ? ' <span class="mut">(' + esc(p.majorler.join(', ')) + ')</span>' : '') +
+      '</span><span class="' + rr + '">' + ok(a.m) + ' ' + sgn(a.pct, 2) + '% · ' + sgn(a.z, 1) + 'σ</span></div>';
   }).join('');
-  var isin = rj.durum === 'ısınıyor' ? '<div class="satir">Geçmiş: ' + (rj.ornek || 0) + '/' + (rj.gerekli || '—') + ' saatlik örnek.' +
-    (rj.dom_regime ? ' Dominans panelinin yorumu: <b>' + esc(rj.dom_regime) + '</b>' : '') + '</div>' : '';
+  var pRenk = p.m > 0 ? 'poz' : p.m < 0 ? 'neg' : 'mut';
+  var fRenk = rj.f > 0 ? 'poz' : rj.f < 0 ? 'neg' : 'mut';
+  var oRenk = o.a > 0 ? 'poz' : o.a < 0 ? 'neg' : 'mut';
+  var oylar = (rj.oylar || []).map(function (x) {
+    var oyT = x.oy > 0 ? '<span class="poz">+' + x.oy + '</span>' : x.oy < 0 ? '<span class="neg">' + x.oy + '</span>' : '<span class="mut">0</span>';
+    var zT = x.z === null || x.z === undefined ? (x.chg24 !== null && x.chg24 !== undefined ? '24s ' + sgn(x.chg24, 2) : '—') : x.ok + ' ' + sgn(x.z, 1) + 'σ';
+    return '<div class="oy"><span>' + esc(x.k) + ' <span class="mut">' + (x.deger !== null && x.deger !== undefined ? '%' + nf(x.deger, 2) : '') + '</span></span><span>' + zT + ' · oy ' + oyT + '</span></div>';
+  }).join('') + (rj.bilgi || []).map(function (x) {
+    var zT = x.z === null || x.z === undefined ? (x.chg24 !== null && x.chg24 !== undefined ? '24s ' + sgn(x.chg24, 2) : '—') : x.ok + ' ' + sgn(x.z, 1) + 'σ';
+    return '<div class="oy mut"><span>' + esc(x.k) + ' (bilgi)</span><span>' + zT + '</span></div>';
+  }).join('');
+  var isin = rj.durum === 'ısınıyor' ? '<div class="satir">Geçmiş birikiyor: ' + (rj.ornek || 0) + '/' + (rj.gerekli || '—') + ' saatlik örnek; bu sürede akış "nötr" sayılır.' +
+    (rj.dom_regime ? ' Dominans panelinizin yorumu: <b>' + esc(rj.dom_regime) + '</b>' : '') + '</div>' : '';
   $('ozet').innerHTML =
-    '<div class="kart"><small>Piyasa yönü · BTC+ETH · ' + TF_AD[TF] + '</small><div class="buyuk ' + pRenk + '">' + pYon + '</div>' +
-      '<div class="satir">' + sure + ': ' + sgn(p.pct, 2) + '% · ' + sgn(p.z, 2) + 'σ' + (p.sure ? ' · ' + p.sure + ' bardır böyle' : '') + '</div></div>' +
-    '<div class="kart"><small>Altcoin grubu · ' + g.n + ' coin medyanı</small><div class="buyuk ' + gRenk + '">' + sgn(g.z, 2) + 'σ</div>' +
-      '<div class="satir">' + gMet + ' · ' + sure + ': ' + sgn(g.pct, 2) + '%</div></div>' +
-    '<div class="kart"><small>Dominans rejimi (para akışı) · puan ' + sgn(rj.puan, 0) + '/' + (rj.n || 4) + '</small><div class="buyuk ' + rjRenk + '" style="font-size:1rem">' + esc(rjAd) + '</div>' +
+    '<div class="kart"><small>1) Piyasa · BTC + ETH + majörler (⅓ ağırlık) · ' + TF_AD[TF] + '</small><div class="buyuk ' + pRenk + '">' + pYon + '</div>' +
+      '<div class="satir">' + sure + ': ' + sgn(p.pct, 2) + '% · ' + sgn(p.z, 2) + 'σ' + (p.sure ? ' · ' + p.sure + ' bardır böyle' : '') + '</div>' +
+      '<div class="satir">' + ayaklar + '</div></div>' +
+    '<div class="kart"><small>2) Para akışı · piyasadan arındırılmış · puan ' + sgn(rj.puan, 0) + '/' + (rj.n || 4) + '</small><div class="buyuk ' + fRenk + '" style="font-size:1rem">' + esc(rj.akis || '—') + '</div>' +
       '<div class="satir">' + oylar + '</div>' + isin + '</div>' +
-    '<div class="kart"><small>Güncelleme</small><div class="buyuk' + (yas > 150 ? ' bayat' : '') + '" style="font-size:1rem">' + esc(DATA.updated_human || '') + '</div>' +
-      '<div class="satir">' + (yas > 150 ? '<span class="bayat">Veri ' + Math.round(yas / 60) + ' saattir güncellenmedi.</span><br>' : '') +
-      'Son kapanmış mum: ' + zamanTR(Date.parse(T.son_mum)) + ' · pencere β ' + T.lenB + ' / ayrışma ' + T.lenA + ' bar' +
-      (T.atlanan && (T.atlanan.hata || T.atlanan.kisa_gecmis) ? '<br>Atlanan: ' + T.atlanan.hata + ' hata, ' + T.atlanan.kisa_gecmis + ' kısa geçmiş' : '') + '</div></div>';
+    '<div class="kart"><small>3) Altlar için durum = piyasa × akış</small><div class="buyuk ' + oRenk + '" style="font-size:1.05rem">' + esc(o.metin) + '</div>' +
+      '<div class="satir">Alt sepeti (' + g.n + ' coin medyanı): ' + sure + ' ' + sgn(g.pct, 2) + '% · piyasaya göre ' + sgn(g.z, 2) + 'σ</div>' +
+      '<div class="satir mut">Güncelleme: ' + esc(DATA.updated_human || '') + (yas > 150 ? ' · <span class="bayat">veri ' + Math.round(yas / 60) + ' saattir güncellenmedi</span>' : '') +
+      '<br>Son mum: ' + zamanTR(Date.parse(T.son_mum)) + ' · pencere β ' + T.lenB + ' / ayrışma ' + T.lenA + ' bar' +
+      (T.atlanan && (T.atlanan.hata || T.atlanan.kisa_gecmis) ? ' · atlanan ' + T.atlanan.hata + ' hata, ' + T.atlanan.kisa_gecmis + ' kısa geçmiş' : '') + '</div></div>' +
+    '<div class="kart"><small>Karne · coin durumu başladıktan sonraki ' + (kr.H || T.lenA) + ' bar · son ~' + Math.round(700 * (TF === '1h' ? 1 : 4) / 24) + ' gün, tüm coinler</small>' +
+      karneSatir('Önde', kr.onde, kr.hepsi) + karneSatir('Uyumlu', kr.uyumlu, kr.hepsi) + karneSatir('Geride', kr.geride, kr.hepsi) + karneSatir('Tüm barlar (taban)', kr.hepsi, null) +
+      '<div class="satir mut">"Sepete göre": coin getirisi − alt sepeti getirisi. Tabandan farkı durumun değeridir. Geçmiş, geleceği garanti etmez.</div></div>';
   $('saat').textContent = DATA.updated_human || '';
   $('altNot').textContent = DATA.uyari || 'Yatırım tavsiyesi değildir.';
 }
@@ -367,7 +386,7 @@ function filtreCiz() {
   var S0 = satirlar();
   $('filtre').innerHTML = FILTRELER.map(function (f) {
     var n = f.k === 'tum' ? S0.length : f.k === 'fav' ? S0.filter(function (r) { return FAV.has(r.s); }).length : S0.filter(function (r) { return r.ton === f.t; }).length;
-    var nokta = f.t !== undefined ? '<span class="nokta" style="background:' + tonRenk(f.t, false) + (f.t === 1 || f.t === -1 ? ';opacity:.6' : '') + '"></span>' : '';
+    var nokta = f.t !== undefined ? '<span class="nokta" style="background:' + tonRenk(f.t) + (f.t === 1 || f.t === -1 ? ';opacity:.6' : '') + '"></span>' : '';
     return '<button class="cip' + (FILTRE === f.k ? ' aktif' : '') + '" data-f="' + f.k + '">' + nokta + esc(f.ad) + '<b>' + n + '</b></button>';
   }).join('');
 }
@@ -390,7 +409,7 @@ function spark(v, t) {
   var y = function (x) { return (h - 1 - (x - lo) / (hi - lo) * (h - 2)).toFixed(1); };
   var pts = v.map(function (x, i) { return (i * (w - 1) / (v.length - 1)).toFixed(1) + ',' + y(x); }).join(' ');
   return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '"><rect x="0" y="' + y(1) + '" width="' + w + '" height="' + (y(-1) - y(1)).toFixed(1) +
-    '" fill="' + css('--alt') + '"/><line x1="0" x2="' + w + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="' + css('--bd') + '"/><polyline fill="none" stroke="' + tonRenk(t, false) +
+    '" fill="' + css('--alt') + '"/><line x1="0" x2="' + w + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="' + css('--bd') + '"/><polyline fill="none" stroke="' + tonRenk(t) +
     '" stroke-width="1.5" points="' + pts + '"/></svg>';
 }
 function zBar(z) {
@@ -407,7 +426,7 @@ function tabloCiz() {
   }).sort(sirala);
   if (!rows.length) { $('govde').innerHTML = '<tr><td colspan="13" class="sol mut">Bu süzgece uyan coin yok.</td></tr>'; return; }
   $('govde').innerHTML = rows.map(function (r) {
-    var renk = tonRenk(r.ton, false);
+    var renk = tonRenk(r.ton);
     return '<tr data-s="' + esc(r.s) + '"' + (r.s === SECILI ? ' class="secili"' : '') + '>' +
       '<td class="sol"><span class="yildiz' + (FAV.has(r.s) ? ' dolu' : '') + '" data-fav="' + esc(r.s) + '">' + (FAV.has(r.s) ? '★' : '☆') + '</span></td>' +
       '<td class="sol coin">' + esc(r.s.replace(/USDT$/, '')) + '</td>' +
@@ -416,9 +435,10 @@ function tabloCiz() {
       '<td class="' + (r.z >= 1 ? 'poz' : r.z <= -1 ? 'neg' : 'mut') + '">' + sgn(r.z, 2) + 'σ' + zBar(r.z) + '</td>' +
       '<td class="gm ' + (r.dz6 > 0 ? 'poz' : r.dz6 < 0 ? 'neg' : 'mut') + '">' + sgn(r.dz6, 2) + '</td>' +
       '<td class="durum"><span class="nokta" style="background:' + renk + (r.ton === 1 || r.ton === -1 ? ';opacity:.6' : '') + '"></span>' +
-        '<span style="color:' + renk + '">' + esc(r.durum) + '</span>' + (r.ek ? '<span class="ek">' + esc(r.ek) + '</span>' : '') + '</td>' +
+        '<span style="color:' + renk + '">' + esc(r.durum) + '</span>' +
+        '<span class="ek">piyasaya göre beklenen ' + sgn(r.bek, 1) + '% · gerçek ' + sgn(r.ger, 1) + '% (son ' + DATA.tf[TF].lenA + ' bar)</span></td>' +
       '<td>' + r.sure + (r.sure <= 3 ? '<span class="yeni">yeni</span>' : '') + '</td>' +
-      '<td class="gm">' + nf(r.beta, 2) + '</td>' +
+      '<td class="gm">' + nf(r.beta, 2) + ' / ' + nf(r.beta_alt, 2) + '</td>' +
       '<td class="gm">' + nf(r.r, 2) + '</td>' +
       '<td class="gm">' + hacimFmt(r.qv) + '</td>' +
       '<td class="gm ' + (r.fr > 0 ? 'poz' : r.fr < 0 ? 'neg' : 'mut') + '">' + (r.fr === null || r.fr === undefined ? '—' : sgn(r.fr * 100, 4) + '%') + '</td>' +
@@ -429,11 +449,18 @@ function tfButonlari() {
   Array.prototype.forEach.call(document.querySelectorAll('[data-tf]'), function (b) { b.classList.toggle('aktif', b.getAttribute('data-tf') === TF); });
 }
 function lejantCiz() {
-  var L = [[1, 1], [1, 0], [1, -1], [-1, 1], [-1, 0], [-1, -1], [0, 1], [0, 0], [0, -1]];
-  $('lejant').innerHTML = '<tr><td><b>Piyasa</b></td><td><b>Coin</b></td><td><b>Durum</b></td></tr>' + L.map(function (x) {
+  var O = [[1, 1], [1, 0], [1, -1], [0, 1], [0, 0], [0, -1], [-1, 1], [-1, 0], [-1, -1]];
+  var akAd = { 1: 'altlara giriyor', 0: 'nötr', '-1': 'çıkıyor (nakde / BTC\'ye)' };
+  $('lejantOrtam').innerHTML = '<tr><td><b>Piyasa</b></td><td><b>Para akışı</b></td><td><b>Altlar için durum</b></td></tr>' + O.map(function (x) {
+    var o = ortam(x[0], x[1]), r = o[0] > 0 ? css('--tav') : o[0] < 0 ? css('--dip') : css('--sol');
+    return '<tr><td>' + ok(x[0]) + '</td><td>' + akAd[x[1]] + '</td><td style="color:' + r + '">' + esc(o[1]) + '</td></tr>';
+  }).join('');
+  var L = [[1, 1], [1, 0], [1, -1], [0, 1], [0, 0], [0, -1], [-1, 1], [-1, 0], [-1, -1]];
+  var aAd = { 1: 'olumlu', 0: 'nötr', '-1': 'olumsuz' };
+  $('lejant').innerHTML = '<tr><td><b>Altlar için durum</b></td><td><b>Coin</b></td><td><b>Sonuç</b></td></tr>' + L.map(function (x) {
     var t = ton(x[0], x[1]);
-    return '<tr><td>' + (x[0] > 0 ? '↑' : x[0] < 0 ? '↓' : '↔') + '</td><td>' + (x[1] > 0 ? 'z ≥ +1 (güçlü)' : x[1] < 0 ? 'z ≤ −1 (zayıf)' : '−1 < z < +1 (uyumlu)') +
-      '</td><td><span class="nokta" style="background:' + tonRenk(t, false) + '"></span><span style="color:' + tonRenk(t, false) + '">' + durumMetni(x[0], x[1]) + '</span></td></tr>';
+    return '<tr><td>' + aAd[x[0]] + '</td><td>' + (x[1] > 0 ? 'z ≥ +1 (önde)' : x[1] < 0 ? 'z ≤ −1 (geride)' : '−1 < z < +1 (uyumlu)') +
+      '</td><td><span class="nokta" style="background:' + tonRenk(t) + '"></span><span style="color:' + tonRenk(t) + '">' + durumMetni(x[0], x[1]) + '</span></td></tr>';
   }).join('');
 }
 
@@ -460,8 +487,6 @@ function grafikKur() {
     bottomLineColor: R.dip, bottomFillColor1: hexAlfa(R.dip, 0.03), bottomFillColor2: hexAlfa(R.dip, 0.35),
     priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
   }, 1);
-  S.grup = chart.addSeries(LC.LineSeries, { color: R.sol, lineWidth: 1, lineStyle: LC.LineStyle.Dashed, priceLineVisible: false,
-    lastValueVisible: false, crosshairMarkerVisible: false }, 1);
   [[2, R.sol, LC.LineStyle.Dashed], [1, R.sol, LC.LineStyle.Dotted], [0, R.bd, LC.LineStyle.Solid], [-1, R.sol, LC.LineStyle.Dotted], [-2, R.sol, LC.LineStyle.Dashed]]
     .forEach(function (x) { S.z.createPriceLine({ price: x[0], color: x[1], lineWidth: 1, lineStyle: x[2], axisLabelVisible: false, title: '' }); });
   S.serit = chart.addSeries(LC.HistogramSeries, { priceLineVisible: false, lastValueVisible: false, priceFormat: { type: 'price', precision: 0, minMove: 1 } }, 2);
@@ -477,12 +502,21 @@ function grafikKur() {
 }
 function satirYaz(i) {
   if (!DETAY || i < 0) return;
-  var m = DETAY.m[i], c = DETAY.c[i], t = ton(m, c), renk = tonRenk(t, false);
-  var g = DETAY.grup[DETAY.zaman[i]], gEk = g === undefined ? '' : grupEki(c, uclu(g, UYUM_BANT));
-  $('uyumSatir').innerHTML = '<span class="mut">' + zamanTR(DETAY.ms[i]) + '</span> · Piyasa (BTC+ETH) ' + (m > 0 ? '↑' : m < 0 ? '↓' : '↔') + ' ' + sgn(DETAY.pct[i], 2) +
-    '% · Coin ' + sgn(DETAY.z[i], 2) + 'σ → ' + esc(durumMetni(m, c)) + (gEk ? ' · <span class="mut">' + esc(gEk) + '</span>' : '');
+  var m = DETAY.m[i], c = DETAY.c[i], son = i === DETAY.n - 1, T = DATA.tf[DETAY.tf], rj = DATA.rejim || {};
+  var html, renk;
+  if (son) {                                         // son bar: tam durum (akış güncel)
+    var o = T.ortam || ortam(m, 0), t = ton(o.a, c);
+    renk = tonRenk(t);
+    html = '<span class="mut">' + zamanTR(DETAY.ms[i]) + '</span> · Piyasa ' + ok(m) + ' ' + sgn(DETAY.pct[i], 2) + '% · ' + esc(rj.akis || 'akış —') +
+      ' → ' + esc(o.metin) + ' · Coin ' + sgn(DETAY.z[i], 2) + 'σ → <b>' + esc(durumMetni(o.a, c)) + '</b>';
+  } else {                                           // geçmiş bar: akış bilinmez → majör yönü + coin durumu
+    renk = c > 0 ? css('--tav') : c < 0 ? css('--dip') : css('--sol');
+    html = '<span class="mut">' + zamanTR(DETAY.ms[i]) + '</span> · Piyasa ' + ok(m) + ' ' + sgn(DETAY.pct[i], 2) + '% · Coin ' + sgn(DETAY.z[i], 2) + 'σ → ' +
+      (c > 0 ? 'coin önde' : c < 0 ? 'coin geride' : 'coin uyumlu') + ' <span class="mut">(geçmiş bar: para akışı yalnız güncel değer olarak bilinir)</span>';
+  }
+  $('uyumSatir').innerHTML = html;
   $('uyumSatir').style.color = renk;
-  $('uyumSatir').style.background = hexAlfa(renk, t === 0 ? 0.08 : 0.14);
+  $('uyumSatir').style.background = hexAlfa(renk, 0.12);
 }
 function detayAc(sym) {
   SECILI = sym;
@@ -495,45 +529,42 @@ function detayAc(sym) {
   $('dRsi').href = 'rsi_grafik.html?coin=' + encodeURIComponent(sym) + '&tf=' + tf;
   try { history.replaceState(null, '', '?coin=' + encodeURIComponent(sym) + '&tf=' + tf); } catch (e) { /* yoksay */ }
   tabloCiz();
-  Promise.all([mumlar(sym, tf), mumlar('BTCUSDT', tf), mumlar('ETHUSDT', tf)]).then(function (res) {
+  mumlar(sym, tf).then(function (coin) {
     if (no !== detayNo) return;                         // bu arada başka coin seçildi
-    var coin = res[0], maj = { BTCUSDT: res[1], ETHUSDT: res[2] };
-    var harita = {}; Object.keys(maj).forEach(function (s) { harita[s] = {}; maj[s].forEach(function (m) { harita[s][m.t] = m.c; }); });
-    var ortak = maj.BTCUSDT.map(function (m) { return m.t; }).filter(function (t) { return harita.ETHUSDT[t] !== undefined; });
+    // Piyasa (BTC+ETH+majörler) ve alt sepeti getirileri sunucunun son hesabından: iki taraf aynı sayıları kullanır
+    var piyH = {}, grupH = {};
+    (DATA.tf[tf].piyasa_getiri || []).forEach(function (x) { piyH[x[0] * 1000] = x[1]; });
+    (DATA.tf[tf].grup_getiri || []).forEach(function (x) { grupH[x[0] * 1000] = x[1]; });
+    var ortak = Object.keys(piyH).map(Number).filter(function (t) { return grupH[t] !== undefined; }).sort(function (a, b) { return a - b; });
     var cMap = {}; coin.forEach(function (m) { cMap[m.t] = m; });
     var bas = ortak.findIndex(function (t) { return cMap[t] !== undefined; });
     if (bas < 0 || ortak.length - bas < P.B + 2 * P.A) throw new Error('bu coin için yeterli geçmiş yok (' + (bas < 0 ? 0 : ortak.length - bas) + ' bar)');
-    var rm = new Array(ortak.length).fill(0);
-    Object.keys(MAJOR).forEach(function (s) {
-      var g = getiriler(ortak.map(function (t) { return harita[s][t]; }));
-      rm = rm.map(function (v, i) { return v + MAJOR[s] * g[i]; });
-    });
+    var rm = ortak.map(function (t) { return piyH[t]; });
     var mk = piyasaZ(rm, P.B, P.A).slice(bas);
-    var zaman = ortak.slice(bas), rmC = rm.slice(bas);
+    var zaman = ortak.slice(bas), rmC = rm.slice(bas), gC = zaman.map(function (t) { return grupH[t]; });
     var kap = zaman.map(function (t) { return cMap[t] ? cMap[t].c : null; });
-    var az = ayrisma(getiriler(kap), rmC, P.B, P.A);
+    var M = model2(getiriler(kap), rmC, gC, P.B, P.A);
     var isin = P.B + 2 * P.A;                           // ısınma: bu bardan önceki değerler gösterilmez
-    var D = { n: 0, idx: {}, m: [], c: [], z: [], pct: [], ms: [], zaman: [], grup: {} };
-    (DATA.tf[tf].grup_seri || []).forEach(function (x) { D.grup[x[0] + TR_OFS] = x[1]; });
-    var mumV = [], zV = [], sV = [], gV = [];
+    var D = { n: 0, tf: tf, idx: {}, m: [], c: [], z: [], pct: [], ms: [] };
+    var mumV = [], zV = [], sV = [];
     for (var i = isin; i < zaman.length; i++) {
       var t = Math.floor(zaman[i] / 1000) + TR_OFS, m = cMap[zaman[i]];
-      var mm = uclu(mk[i], PIYASA_ESIK), cc = uclu(az.z[i], UYUM_BANT), tt = ton(mm, cc);
+      var mm = uclu(mk[i], PIYASA_ESIK), cc = uclu(M.z[i], UYUM_BANT);
       var toplam = 0; for (var j = Math.max(1, i - P.A + 1); j <= i; j++) toplam += rmC[j];
-      D.idx[t] = D.n; D.m.push(mm); D.c.push(cc); D.z.push(az.z[i]); D.pct.push((Math.exp(toplam) - 1) * 100); D.ms.push(zaman[i]); D.zaman.push(t); D.n++;
+      D.idx[t] = D.n; D.m.push(mm); D.c.push(cc); D.z.push(M.z[i]); D.pct.push((Math.exp(toplam) - 1) * 100); D.ms.push(zaman[i]); D.n++;
       if (m) mumV.push({ time: t, open: m.o, high: m.h, low: m.l, close: m.c });
-      zV.push({ time: t, value: +az.z[i].toFixed(3) });
-      sV.push({ time: t, value: 1, color: tt === 0 ? hexAlfa(css('--sol'), 0.35) : tonRenk(tt, true) });
-      if (D.grup[t] !== undefined) gV.push({ time: t, value: D.grup[t] });
+      zV.push({ time: t, value: +M.z[i].toFixed(3) });
+      sV.push({ time: t, value: 1, color: cc > 0 ? hexAlfa(css('--tav'), 0.8) : cc < 0 ? hexAlfa(css('--dip'), 0.8) : hexAlfa(css('--sol'), 0.3) });
     }
     DETAY = D;
     grafikKur();
-    S.mum.setData(mumV); S.z.setData(zV); S.serit.setData(sV); S.grup.setData(gV);
+    S.mum.setData(mumV); S.z.setData(zV); S.serit.setData(sV);
     var dec = ondalik(mumV.length ? mumV[mumV.length - 1].close : 1);
     S.mum.applyOptions({ priceFormat: { type: 'price', precision: dec, minMove: Math.pow(10, -dec) } });
     chart.timeScale().fitContent();
     satirYaz(D.n - 1);
-    $('dBilgi').textContent = 'β ' + nf(az.beta[az.beta.length - 1], 2) + ' · pencere β ' + P.B + ' / ayrışma ' + P.A + ' bar · kapanmış mumlar';
+    var nb = M.btop.length - 1;
+    $('dBilgi').textContent = 'β piyasa ' + nf(M.btop[nb], 2) + ' · β alt ' + nf(M.balt[nb], 2) + ' · pencere β ' + P.B + ' / ayrışma ' + P.A + ' bar · kapanmış mumlar';
   }).catch(function (e) {
     if (no !== detayNo) return;
     $('dBilgi').innerHTML = '<span class="hata">Grafik yüklenemedi: ' + esc(e.message) + '</span>';

@@ -2,8 +2,9 @@
 // © Leyla_KCTK
 //@version=6
 // AYRIŞMA + MSB-OB PAKETİ — v2.3
-//  • Osilatör: coinin majör piyasaya (BTC+ETH) göre ayrışması (σ) + sol üstte
-//    "piyasa uyumu" satırı (9 durum + OTHERS grubu) + altta uyum şeridi (BÖLÜM 32).
+//  • Osilatör: coinin piyasa (BTC+ETH+majörler) VE OTHERS birlikte çıkarıldıktan sonraki ayrışması (σ)
+//    + sol üstte "piyasa uyumu" satırı: piyasa × para akışı (USDT.D, BTC.D, OTHERS.D) → altlar için
+//    durum × coin → 9 durum; altta uyum şeridi (BÖLÜM 32).
 //  • Rejim: USDT.D+USDC.D, BTC.D, OTHERS.D(×2) oyları; ETH.D bilgi. OTHERS ilk-10 sıçrama filtresi (✂).
 //  • Birleşik AL/SAT: 5 teyitten skor; etiket üzerinde gerekçe + stop + 1R/2R (BÖLÜM 30).
 //  • Sade görünüm anahtarı; pencereler zaman dilimine göre otomatik.
@@ -26,6 +27,8 @@ uy_on  = input.bool(true, "🧭 Piyasa uyumu satırı (osilatörde)", group = gG
      tooltip = "Osilatör panelinde tek satır: piyasanın yönü + coinin ayrışması → şu an hangi durumdasınız. Her barda güncellenir; üzerine gelince açıklaması görünür.")
 uy_pos = input.string("Sol üst", "Satırın yeri", options = ["Sol üst", "Orta üst", "Sağ üst", "Sol alt", "Orta alt", "Sağ alt"], inline = "uy", group = gG)
 uy_szS = input.string("Normal", "Boyut", options = ["Küçük", "Normal", "Büyük"], inline = "uy", group = gG)
+uy_krn = input.bool(true, "Durum karnesi (bu grafiğin geçmişinde durumlar sonrası ne oldu?)", group = gG,
+     tooltip = "Eşikler gerçek veride optimize edilmedi. Karne, bu grafiğin geçmişinde her durum BAŞLADIKTAN sonraki 'ayrışma penceresi' kadar barda coinin ortalama getirisini ve pozitif kapanma oranını ölçer. 8 örnekten azsa 'yetersiz' yazar. Karşılaştırma için tüm barların ortalaması da verilir.")
 uy_th  = input.float(0.5, "Piyasa yön eşiği (σ)", minval = 0.1, step = 0.1, group = gG,
      tooltip = "Piyasanın birikmiş hareketi kendi oynaklığına göre bu eşiği aşarsa ↑ / ↓, aşmazsa ↔ (yatay) sayılır. Küçültürsen piyasa daha sık ↑/↓ görünür.")
 
@@ -60,16 +63,18 @@ sig_alertOn = input.bool(true, "Detaylı alert() mesajları", group = gS,
 
 // ── Girdiler
 g1 = "🌟🎯🌟🎯🌟 AYRIŞMA · KARŞILAŞTIRMA ÖLÇÜTÜ 🌟🎯🌟🎯🌟"
-benchMode = input.string("Majörler: BTC + ETH (önerilen)", "Coin neye göre ölçülsün?",
-     options=["Majörler: BTC + ETH (önerilen)", "Coine özgü: BTC + OTHERS (2 faktör)", "Yalnız OTHERS"], group=g1,
-     tooltip="Majörler (önerilen): piyasa yönünü BTC + ETH (+ isteğe bağlı 3. majör) belirler; ayrışma, coinin bu piyasanın gerektirdiği yerde olup olmadığını ölçer. Altcoin grubunun (OTHERS) durumu ayrıca uyum satırında yazılır.\nCoine özgü (2 faktör): BTC ve OTHERS birlikte çıkarılır; kalan σ yalnız coine ait harekettir (bütün altlar birlikte yükselince 0 kalır).\nYalnız OTHERS: coin yalnızca altcoin grubuna göre ölçülür.")
+benchMode = input.string("Coine özgü: Piyasa + OTHERS (önerilen)", "Coin neye göre ölçülsün?",
+     options=["Coine özgü: Piyasa + OTHERS (önerilen)", "Yalnız OTHERS", "Yalnız piyasa: BTC + ETH + majörler"], group=g1,
+     tooltip="Piyasa = BTC, ETH ve majörler (BTC/ETH hariç ilk 10), ⅓'er ağırlık.\nCoine özgü (önerilen, OTHERS coinleri için): coinin getirisinden piyasanın VE altcoin grubunun (OTHERS) etkisi, coinin kendi geçmiş duyarlılıklarıyla birlikte çıkarılır; kalan σ coinin kendine ait hareketidir: altlar birlikte yükselip düşerken coin onlarla gidiyorsa ≈ 0.\nYalnız OTHERS: coin yalnız altcoin grubuna göre ölçülür.\nYalnız piyasa: OTHERS hesaba katılmaz; alt rallisinde bütün altlar 'önde' görünür.")
 symBtc = input.symbol("BINANCE:BTCUSDT.P", "BTC sembolü", group=g1)
 symEth = input.symbol("BINANCE:ETHUSDT.P", "ETH sembolü", group=g1)
-wBtc   = input.float(0.70, "BTC ağırlığı (kalanı ETH)", minval=0.0, maxval=1.0, step=0.05, group=g1,
-         tooltip="Majör sepeti = ağırlık × BTC + (1 − ağırlık) × ETH (3. majör açıksa onun payı orantılı düşülür). Piyasa yönü her ölçütte bu sepetten okunur.")
-sym3   = input.symbol("BINANCE:SOLUSDT.P", "3. majör", inline="m3", group=g1)
-wMaj3     = input.float(0.0, "payı", minval=0.0, maxval=0.5, step=0.05, inline="m3", group=g1,
-         tooltip="0 = kapalı. SOL, BNB, XRP gibi bir majörü sepete katmak için 0,10–0,20 verin.")
+symM1  = input.symbol("BINANCE:XRPUSDT.P",  "Majörler", inline="mj1", group=g1)
+symM2  = input.symbol("BINANCE:BNBUSDT.P",  "",         inline="mj1", group=g1)
+symM3  = input.symbol("BINANCE:SOLUSDT.P",  "",         inline="mj2", group=g1)
+symM4  = input.symbol("BINANCE:DOGEUSDT.P", "",         inline="mj2", group=g1)
+symM5  = input.symbol("BINANCE:TRXUSDT.P",  "",         inline="mj3", group=g1)
+symM6  = input.symbol("BINANCE:ADAUSDT.P",  "",         inline="mj3", group=g1,
+         tooltip="Majörler = BTC ve ETH hariç ilk 10'daki stabil olmayan coinler (eşit ağırlıklı sepet). Piyasa yönü BTC, ETH ve bu sepetten ⅓'er ağırlıkla okunur. İlk 10 değişirse sembolleri güncelleyin.")
 symOth = input.symbol("CRYPTOCAP:OTHERS", "Altcoin grubu (OTHERS)", group=g1,
          tooltip="OTHERS = piyasa değerine göre ilk 10 dışındaki tüm coinler. Coinlerinizin grubunun durumu bundan okunur.")
 othK   = input.float(6.0, "OTHERS sıçrama filtresi (sağlam σ, 0 = kapalı)", minval=0.0, step=0.5, group=g1,
@@ -101,6 +106,8 @@ symEthD = input.symbol("CRYPTOCAP:ETH.D", "", inline="re", group=g2,
           tooltip="Varsayılan KAPALI: ETH.D yükselişi bazen altcoin rotasyonunun öncüsüdür, bazen de paranın küçük altlardan ETH'ye kaçtığını gösterir; küçük altlar için yönü belirsizdir. Kapalıyken oy vermez.")
 lenDom_g= input.int(12, "Değişim penceresi (bar)", minval=1, group=g2)
 domTh   = input.float(1.0, "Oy eşiği (σ) — büyütürsen rejim sadeleşir", minval=0.1, step=0.1, group=g2)
+rj_ntr  = input.bool(true, "Akışı piyasanın fiyat hareketinden arındır (önerilen)", group=g2,
+          tooltip="Dominanslar kısmen fiyattan türer: piyasa düşünce USDT.D mekanik olarak yükselir. Açıkken her dominansın değişiminden, piyasanın (BTC+ETH+majörler) aynı dönemdeki hareketinin açıkladığı kısım (kayan regresyonla) çıkarılır; oy yalnız KALAN kısma göre verilir. Böylece 'piyasa ↓' bilgisi akış oyunda ikinci kez sayılmaz.")
 
 // ── Kullanılan pencereler: otomatik (zaman dilimine göre) ya da elle
 tfDk   = timeframe.in_seconds(timeframe.period) / 60.0      // bir barın süresi (dakika)
@@ -126,15 +133,20 @@ zemSid = input.int(5, "Zemin tonu şiddeti (0 = kapalı, 10 = koyu)", minval=0, 
 bantSid= input.int(9, "Boşluk bandı şiddeti (0 = kapalı, 10 = koyu)", minval=0, maxval=10, group=gR)
 
 // ── Veri (repaint güvenli: lookahead_off)
-mdMaj   = benchMode == "Majörler: BTC + ETH (önerilen)"
+mdMaj   = benchMode == "Yalnız piyasa: BTC + ETH + majörler"
 mdOth   = benchMode == "Yalnız OTHERS"
 md2F    = not mdMaj and not mdOth
-benchAd = md2F ? "BTC+OTHERS" : mdOth ? "OTHERS" : "Majörler"
+benchAd = md2F ? "Piyasa+OTHERS" : mdOth ? "OTHERS" : "Piyasa"
 
 [btc, vBtc] = request.security(symBtc, timeframe.period, [close, volume], barmerge.gaps_off, barmerge.lookahead_off)
 eth         = request.security(symEth, timeframe.period, close,           barmerge.gaps_off, barmerge.lookahead_off)
 oth         = request.security(symOth, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
-maj3        = wMaj3 > 0 ? request.security(sym3, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off) : float(na)
+mj1 = request.security(symM1, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
+mj2 = request.security(symM2, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
+mj3 = request.security(symM3, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
+mj4 = request.security(symM4, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
+mj5 = request.security(symM5, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
+mj6 = request.security(symM6, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
 
 // Dominanslar yalnızca rejim açıkken istenir (ETH.D oy vermese de bilgi için alınır)
 dUsdt = useDom and rj_stb ? request.security(symDom,  timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off) : float(na)
@@ -150,7 +162,11 @@ rc    = lr(close)
 rB    = lr(btc)
 rE    = lr(eth)
 rO_ham = lr(oth)
-rMaj  = (1.0 - wMaj3) * (wBtc * rB + (1.0 - wBtc) * rE) + wMaj3 * lr(maj3)    // majör sepeti = piyasa yönü
+// Majörler (BTC/ETH hariç ilk 10) eşit ağırlıklı; verisi olmayan o barda ortalamaya girmez
+f_varMi(float _p) => na(_p) or na(_p[1]) ? 0 : 1
+mjN   = f_varMi(mj1) + f_varMi(mj2) + f_varMi(mj3) + f_varMi(mj4) + f_varMi(mj5) + f_varMi(mj6)
+rMj   = mjN > 0 ? (lr(mj1) + lr(mj2) + lr(mj3) + lr(mj4) + lr(mj5) + lr(mj6)) / mjN : 0.0
+rMaj  = (rB + rE + rMj) / 3.0                  // PİYASA = BTC + ETH + majörler (⅓'er)
 
 // ── Piyasa modeli (kayan kovaryans; her barda hesaplanır — CW10002)
 // 2 faktörde çok değişkenli EKK kullanılır: coin = b1·BTC + b2·OTHERS + artık.
@@ -174,15 +190,13 @@ rO      = othSic ? nz(bOBh[1], 1.0) * rB : rO_ham
 
 cLL  = f_cov(rMaj, rMaj, lenB)
 cLC  = f_cov(rMaj, rc,    lenB)
-cBB  = f_cov(rB, rB, lenB)
 cOO  = f_cov(rO, rO, lenB)
-cBO  = f_cov(rB, rO, lenB)
-cBC  = f_cov(rB, rc, lenB)
+cLO  = f_cov(rMaj, rO, lenB)
 cOC  = f_cov(rO, rc, lenB)
-det2 = cBB * cOO - cBO * cBO
+det2 = cLL * cOO - cLO * cLO
 
-float beta  = 1.0       // BTC'ye (ya da tek faktöre) TOPLAM duyarlılık — panelde gösterilir
-float beta2 = na        // BTC'den bağımsız altcoin piyasasına duyarlılık (yalnız 2 faktör)
+float beta  = 1.0       // majörlere (ya da tek faktöre) TOPLAM duyarlılık
+float beta2 = na        // majörlerden bağımsız altcoin piyasasına duyarlılık (yalnız 2 faktör)
 float fit   = 0.0       // piyasanın açıkladığı getiri
 bool  othOk = not na(cOO) and cOO > 0
 if mdMaj
@@ -191,17 +205,18 @@ if mdMaj
 else if mdOth and othOk
     beta := f_kis(cOC / cOO, -1.0, 4.0)
     fit  := beta * rO
-else if md2F and othOk and cBB > 0 and det2 > 0
-    b1 = f_kis((cOO * cBC - cBO * cOC) / det2, -3.0, 5.0)
-    b2 = f_kis((cBB * cOC - cBO * cBC) / det2, -2.0, 5.0)
-    fit   := b1 * rB + b2 * rO
-    // Gösterim: b1 + b2·β(OTHERS→BTC) = BTC'ye toplam duyarlılık; b2 = altcoin faktörü
-    beta  := b1 + b2 * (cBO / cBB)
+else if md2F and othOk and cLL > 0 and det2 > 0
+    // Çok değişkenli EKK: coin = b1·majörler + b2·OTHERS + artık
+    b1 = f_kis((cOO * cLC - cLO * cOC) / det2, -3.0, 5.0)
+    b2 = f_kis((cLL * cOC - cLO * cLC) / det2, -2.0, 5.0)
+    fit   := b1 * rMaj + b2 * rO
+    // Gösterim: b1 + b2·β(OTHERS→majörler) = majörlere toplam duyarlılık; b2 = altcoin faktörü
+    beta  := b1 + b2 * (cLO / cLL)
     beta2 := b2
 else
-    // OTHERS verisi gelmiyorsa (ya da ilk barlarda) BTC'ye düşülür
-    beta := not na(cBB) and cBB > 0 ? f_kis(cBC / cBB, -1.0, 4.0) : 1.0
-    fit  := beta * rB
+    // OTHERS verisi gelmiyorsa (ya da ilk barlarda) yalnız majörlere düşülür
+    beta := not na(cLL) and cLL > 0 ? f_kis(cLC / cLL, -1.0, 4.0) : 1.0
+    fit  := beta * rMaj
 
 // ── Artık (piyasa çıkarılmış)
 resid  = rc - fit
@@ -241,11 +256,17 @@ zMax = ta.highest(math.abs(z), lenB)
 // Her dominansın son lenDom bardaki log değişimi KENDİ oynaklığına bölünür (σ);
 // böylece USDT.D'nin 0,1 puanlık hareketi ile BTC.D'nin 0,5 puanlığı kıyaslanabilir.
 // _sic = true olan barın değişimi 0 sayılır (OTHERS.D'deki ilk-10 sıçramaları için).
+// rj_ntr açıkken değişimden majörlerin açıkladığı kısım çıkarılır (çift saymayı önler).
 f_dz(float _x, bool _sic) =>
     float adim = na(_x) or na(_x[1]) or _x[1] <= 0 or _sic ? 0.0 : math.log(_x / _x[1])
-    float ch  = math.sum(adim, lenDom)
-    float sdv = ta.stdev(ch, lenB)
-    na(_x) or na(sdv) or sdv <= 0 ? float(na) : ch / sdv
+    float ch   = math.sum(adim, lenDom)
+    float chM  = math.sum(rMaj, lenDom)
+    float cv   = f_cov(ch, chM, lenB)
+    float vr   = f_cov(chM, chM, lenB)
+    float b    = rj_ntr and not na(vr) and vr > 0 ? cv / vr : 0.0
+    float e    = ch - b * chM
+    float sdv  = ta.stdev(e, lenB)
+    na(_x) or na(sdv) or sdv <= 0 ? float(na) : e / sdv
 
 f_domOy(float _z, float _yon) => na(_z) ? 0 : _z * _yon >= domTh ? 1 : _z * _yon <= -domTh ? -1 : 0
 
@@ -1994,38 +2015,58 @@ if sig_alertOn and (sigBuy or sigSell)
 
 // BÖLÜM 32: 🧭 PİYASA UYUMU — osilatörde tek satır + uyum şeridi
 //
-// Piyasa yönü : majör sepeti (BTC + ETH [+ 3. majör]) ayrışmayla AYNI pencerede
-//               biriktirilir ve kendi oynaklığına bölünür (σ). ≥ +eşik → ↑ · ≤ −eşik → ↓ · arası ↔
-// Coin        : z ≥ +1σ → piyasadan güçlü · z ≤ −1σ → zayıf · arası → uyumlu
-// Altcoin grubu: OTHERS'ın majörlere göre ayrışması (aynı yöntem). Coin ile grup
-//               aynı durumdaysa "bütün altlar", farklıysa "yalnız bu coin" yazılır.
-// Bu birleşim 9 durumdan birini verir; satır her barda güncellenir.
-uy_rMkt = rMaj                                     // piyasa yönü = majör sepeti (BTC + ETH [+ 3. majör])
-uy_ad   = wMaj3 > 0 ? "Majörler" : "BTC+ETH"
-var float uy_bir = 0.0
-uy_bir := uy_bir * phi + uy_rMkt
-uy_cum  = sonumlu ? uy_bir : math.sum(uy_rMkt, lenA)
-uy_sd   = ta.stdev(uy_rMkt, lenB)
-uy_sdC  = sonumlu ? uy_sd * lenA / math.sqrt(2.0 * lenA - 1.0) : uy_sd * math.sqrt(lenA)
-uy_mkZ  = uy_sdC > 0 ? uy_cum / uy_sdC : 0.0
-uy_pct  = (math.exp(math.sum(uy_rMkt, lenA)) - 1.0) * 100.0     // piyasanın son lenA bardaki % değişimi
+// 1) Piyasa    : BTC, ETH ve majörler (BTC/ETH hariç ilk 10) ⅓'er — birikmiş getiri / oynaklık → ≥ +eşik ↑ · ≤ −eşik ↓ · arası ↔
+// 2) Para akışı: USDT.D(+USDC.D) ↓, BTC.D ↓, OTHERS.D ↑ (×2) oyları (REJİM grubu)
+//                → altlara giriyor / nötr / altlardan çıkıyor (nakde · BTC'ye · genel)
+// 3) Altlar için durum = piyasa × akış:
+//      ↑ & giriş  → alt yükselişi (+)      ↑ & nötr → normal yükseliş (+)   ↑ & çıkış → altlar eziliyor (−)
+//      ↔ & giriş  → alt rotasyonu (+)      ↔ & nötr → belirgin yok (0)      ↔ & çıkış → altlardan çıkış (−)
+//      ↓ & giriş  → altlar dirençli (0)    ↓ & nötr → düşüş (−)             ↓ & çıkış → risk-off (−)
+// 4) Coin: ölçüte göre ayrışma (varsayılan: piyasa + OTHERS birlikte çıkarılmış) → ≥ +1σ önde · ≤ −1σ geride · arası uyumlu
+// Durum = altlar için durum × coin → satır her barda güncellenir, şerit geçmişi gösterir.
+// Birikmiş getiri / oynaklık (σ) — piyasa ve üç ayağı (BTC, ETH, majörler) için
+f_yonZ(float _r) =>
+    var float s = 0.0
+    s := s * phi + _r
+    float cum = sonumlu ? s : math.sum(_r, lenA)
+    float sdv = ta.stdev(_r, lenB)
+    float sdc = sonumlu ? sdv * lenA / math.sqrt(2.0 * lenA - 1.0) : sdv * math.sqrt(lenA)
+    sdc > 0 ? cum / sdc : 0.0
+uy_mkZ  = f_yonZ(rMaj)
+uy_zB   = f_yonZ(rB)
+uy_zE   = f_yonZ(rE)
+uy_zMj  = f_yonZ(rMj)
+f_ok3(float _z) => _z >= uy_th ? "↑" : _z <= -uy_th ? "↓" : "↔"
+uy_majP = (math.exp(math.sum(rMaj, lenA)) - 1.0) * 100.0         // majörlerin son lenA bardaki %
+uy_othP = (math.exp(math.sum(rO, lenA)) - 1.0) * 100.0           // OTHERS'ın son lenA bardaki %
+uy_bekP = (math.exp(math.sum(fit, lenA)) - 1.0) * 100.0          // coin için piyasaya göre BEKLENEN %
+uy_gerP = (math.exp(math.sum(rc, lenA)) - 1.0) * 100.0           // coinin GERÇEKLEŞEN %
 
-uy_m = uy_mkZ >= uy_th ? 1 : uy_mkZ <= -uy_th ? -1 : 0          // piyasa: 1 ↑ · 0 ↔ · −1 ↓
-uy_c = z >= 1.0 ? 1 : z <= -1.0 ? -1 : 0                         // coin  : 1 güçlü · 0 uyumlu · −1 zayıf
+uy_m = uy_mkZ >= uy_th ? 1 : uy_mkZ <= -uy_th ? -1 : 0                     // majörler: 1 ↑ · 0 ↔ · −1 ↓
+uy_f = not domOk ? 0 : rjSum >= rjNeed ? 1 : rjSum <= -rjNeed ? -1 : 0      // akış: 1 giriş · 0 nötr · −1 çıkış
+uy_a = uy_m == 1 ? (uy_f == -1 ? -1 : 1) : uy_m == -1 ? (uy_f == 1 ? 0 : -1) : uy_f   // altlar için durum
+uy_c = z >= 1.0 ? 1 : z <= -1.0 ? -1 : 0                                   // coin: 1 önde · 0 uyumlu · −1 geride
 
-uy_metin = uy_m ==  1 and uy_c ==  1 ? "Coin piyasayı önden çekiyor — göreli güçlü" :
-     uy_m ==  1 and uy_c ==  0 ? "Uyumlu yükseliş — coin piyasayı takip ediyor" :
-     uy_m ==  1 and uy_c == -1 ? "UYUMSUZ — piyasa yükselirken coin geride (coine özgü sorun ya da geriden gelecek)" :
-     uy_m == -1 and uy_c ==  1 ? "Coin düşüşe direniyor — piyasa dönünce ilk toparlananlardan olabilir" :
-     uy_m == -1 and uy_c ==  0 ? "Uyumlu düşüş — coin piyasayla birlikte düşüyor" :
-     uy_m == -1 and uy_c == -1 ? "Coin piyasadan da zayıf — en olumsuz durum" :
-     uy_c ==  1 ? "Piyasa yatay — coin kendi gücüyle yükseliyor" :
-     uy_c == -1 ? "Piyasa yatay — coin kendi zayıflığıyla geriliyor" : "Piyasa yatay, coin uyumlu — belirgin bir durum yok"
+uy_akis = not useDom ? "akış kapalı" : not domOk ? "akış verisi yok" : uy_f == 1 ? "para altlara giriyor" :
+     uy_f == -1 ? (vStb < 0 ? "para nakde kaçıyor" : vBtcD < 0 ? "para BTC'ye gidiyor" : "para altlardan çıkıyor") : "akış nötr"
+f_ok(float _z) => na(_z) ? "·" : _z >= domTh ? "↑" : _z <= -domTh ? "↓" : "↔"
+uy_dom  = "USDT.D" + f_ok(zStb) + " BTC.D" + f_ok(zBtcD) + " OTHERS.D" + f_ok(zOthD)
+uy_ortam = uy_m == 1 and uy_f == 1 ? "alt yükselişi" : uy_m == 1 and uy_f == 0 ? "normal yükseliş" :
+     uy_m == 1 ? "piyasa yükseliyor ama altlar eziliyor" : uy_m == 0 and uy_f == 1 ? "alt rotasyonu" :
+     uy_m == 0 and uy_f == -1 ? "altlardan çıkış" : uy_m == 0 ? "yatay, belirgin akış yok" :
+     uy_f == 1 ? "piyasa düşüyor ama para altlara giriyor" : uy_f == -1 ? "risk-off — altlar sert düşebilir" : "düşüş"
 
-// ── Altcoin grubu (OTHERS) majörlere göre nerede?
+uy_metin = uy_a == 1 and uy_c == 1 ? "EN GÜÇLÜ — ortam olumlu ve coin önde" :
+     uy_a == 1 and uy_c == 0 ? "Uyumlu — ortam olumlu, coin birlikte gidiyor" :
+     uy_a == 1 and uy_c == -1 ? "UYUMSUZ — ortam olumlu ama coin geride" :
+     uy_a == -1 and uy_c == 1 ? "Akıntıya karşı güçlü — ortam olumsuz ama coin önde" :
+     uy_a == -1 and uy_c == 0 ? "Uyumlu — ortam olumsuz, coin birlikte gidiyor" :
+     uy_a == -1 and uy_c == -1 ? "EN ZAYIF — ortam olumsuz ve coin de geride" :
+     uy_c == 1 ? "Coin kendi gücüyle önde" : uy_c == -1 ? "Coin kendi zayıflığıyla geride" : "Belirgin bir durum yok"
+
+// ── OTHERS'ın majörlere göre ayrışması (açıklamada gösterilir)
 cMO   = f_cov(rMaj, rO, lenB)
-cMM   = f_cov(rMaj, rMaj, lenB)
-bOM   = not na(cMM) and cMM > 0 ? f_kis(cMO / cMM, -1.0, 4.0) : 1.0
+bOM   = not na(cLL) and cLL > 0 ? f_kis(cMO / cLL, -1.0, 4.0) : 1.0
 resO  = rO - bOM * rMaj
 var float oBir = 0.0
 oBir := oBir * phi + resO
@@ -2033,22 +2074,39 @@ oCum  = sonumlu ? oBir : math.sum(resO, lenA)
 oSd   = ta.stdev(resO, lenB)
 oSdC  = sonumlu ? oSd * lenA / math.sqrt(2.0 * lenA - 1.0) : oSd * math.sqrt(lenA)
 zGrp  = othOk and oSdC > 0 ? oCum / oSdC : 0.0
-uy_g  = not othOk ? 0 : zGrp >= 1.0 ? 1 : zGrp <= -1.0 ? -1 : 0
-uy_ek = not othOk ? "" :
-     uy_c ==  1 and uy_g ==  1 ? "  ·  bütün altlar güçlü (OTHERS da önde)" :
-     uy_c ==  1               ? "  ·  yalnız bu coin güçlü (OTHERS önde değil)" :
-     uy_c == -1 and uy_g == -1 ? "  ·  bütün altlar zayıf (OTHERS da geride)" :
-     uy_c == -1               ? "  ·  yalnız bu coin zayıf (OTHERS geride değil)" :
-     uy_g ==  1 ? "  ·  OTHERS önde, coin henüz katılmadı" :
-     uy_g == -1 ? "  ·  OTHERS geride, coin dayanıyor" : ""
 sonSic = ta.barssince(othSic)
 
-// Ton: +2 güçlü lehte · +1 lehte · 0 nötr · −1 aleyhte · −2 güçlü aleyhte · 9 = uyumsuz (turuncu)
-uy_ton = uy_m == 1 and uy_c == -1 ? 9 : uy_m == 1 and uy_c == 1 ? 2 : uy_m == -1 and uy_c == -1 ? -2 :
-     uy_c == 1 or (uy_m == 1 and uy_c == 0) ? 1 : uy_c == -1 or (uy_m == -1 and uy_c == 0) ? -1 : 0
+// Ton: +2 en güçlü · +1 lehte · 0 nötr · −1 aleyhte · −2 en zayıf · 9 = uyumsuz (turuncu)
+uy_ton = uy_a == 1 and uy_c == -1 ? 9 : uy_a == 1 and uy_c == 1 ? 2 : uy_a == -1 and uy_c == -1 ? -2 :
+     uy_c == 1 or (uy_a == 1 and uy_c == 0) ? 1 : uy_c == -1 or (uy_a == -1 and uy_c == 0) ? -1 : 0
 uy_col = uy_ton == 9 ? #ff9800 : uy_ton > 0 ? colUp : uy_ton < 0 ? colDn : colNe
 uy_stripCol = uy_ton == 9 ? #ff9800 : uy_ton == 2 ? colUp : uy_ton == 1 ? color.new(colUp, 45) :
      uy_ton == -2 ? colDn : uy_ton == -1 ? color.new(colDn, 45) : color.new(colNe, 60)
+
+// ── Durum karnesi: her durum BAŞLADIĞINDA sonraki lenA bardaki getiri (bu grafiğin geçmişi)
+// Sıra: 0 EN GÜÇLÜ(2) · 1 lehte(1) · 2 UYUMSUZ(9) · 3 nötr(0) · 4 aleyhte(−1) · 5 EN ZAYIF(−2)
+var float[] kr_top = array.new_float(6, 0.0)
+var int[]   kr_n   = array.new_int(6, 0)
+var int[]   kr_poz = array.new_int(6, 0)
+var float   kr_hT  = 0.0
+var int     kr_hN  = 0
+f_kIdx(int _t) => _t == 2 ? 0 : _t == 1 ? 1 : _t == 9 ? 2 : _t == 0 ? 3 : _t == -1 ? 4 : 5
+f_kAd(int _k) => _k == 0 ? "EN GÜÇLÜ" : _k == 1 ? "Lehte" : _k == 2 ? "UYUMSUZ" : _k == 3 ? "Nötr" : _k == 4 ? "Aleyhte" : "EN ZAYIF"
+kr_isin = bar_index > lenB + 3 * lenA
+kr_g    = (close / close[lenA] - 1.0) * 100.0
+if uy_krn and kr_isin and not na(kr_g)
+    kr_hT += kr_g
+    kr_hN += 1
+    if uy_ton[lenA] != uy_ton[lenA + 1]
+        k = f_kIdx(uy_ton[lenA])
+        array.set(kr_top, k, array.get(kr_top, k) + kr_g)
+        array.set(kr_n, k, array.get(kr_n, k) + 1)
+        if kr_g > 0
+            array.set(kr_poz, k, array.get(kr_poz, k) + 1)
+f_kSatir(int _k) =>
+    int n = array.get(kr_n, _k)
+    n < 8 ? "yetersiz örnek (n=" + str.tostring(n) + ")" :
+         "ort. " + fs1(array.get(kr_top, _k) / n) + "% · %" + str.tostring(math.round(100.0 * array.get(kr_poz, _k) / n)) + " pozitif · n=" + str.tostring(n)
 
 // ── Şerit (osilatörün altı): uyum durumu ya da sinyal skoru
 plotshape(sig_strip, "Şerit (uyum / skor)", shape.square, location.bottom,
@@ -2065,12 +2123,19 @@ if barstate.islast
     table.clear(uyT, 0, 0)
     if uy_on
         uyOk  = uy_m > 0 ? "↑" : uy_m < 0 ? "↓" : "↔"
-        uyTxt = "Piyasa (" + uy_ad + ") " + uyOk + " " + fs1(uy_pct) + "%   ·   Coin " + fs(z) + "σ   →   " + uy_metin + uy_ek
-        uyTip = "Piyasa yönü: " + fs(uy_mkZ) + "σ (eşik ±" + f2(uy_th, "0.0") + "σ, son " + str.tostring(lenA) + " bar)" +
-             "\nCoin ayrışması (vs " + benchAd + "): " + fs(z) + "σ (±1σ arası = uyumlu)" +
-             "\nOTHERS (majörlere göre): " + (othOk ? fs(zGrp) + "σ" : "veri yok") +
+        uyTxt = "BTC" + f_ok3(uy_zB) + " ETH" + f_ok3(uy_zE) + " Majörler" + f_ok3(uy_zMj) + " → piyasa " + uyOk + " " + fs1(uy_majP) + "% · " + uy_akis + " (" + uy_dom + ") → " + uy_ortam +
+             " · Coin " + fs(z) + "σ → " + uy_metin + (uy_krn ? "  [geçmişte: " + f_kSatir(f_kIdx(uy_ton)) + "]" : "")
+        uyTip = "Piyasa (BTC+ETH+majörler, ⅓'er): " + fs(uy_mkZ) + "σ · BTC " + fs(uy_zB) + "σ · ETH " + fs(uy_zE) + "σ · majörler " + fs(uy_zMj) +
+             "σ (yön eşiği ±" + f2(uy_th, "0.0") + "σ, son " + str.tostring(lenA) + " bar)" +
+             "\nPara akışı puanı: " + fsI(rjSum) + " / " + str.tostring(rjN) + " (USDT.D " + (na(zStb) ? "—" : fs(zStb)) + "σ · BTC.D " +
+             (na(zBtcD) ? "—" : fs(zBtcD)) + "σ · OTHERS.D " + (na(zOthD) ? "—" : fs(zOthD)) + "σ, oy eşiği ±" + f2(domTh, "0.0") + "σ)" +
+             "\nOTHERS: " + (othOk ? fs1(uy_othP) + "% · majörlere göre " + fs(zGrp) + "σ" : "veri yok") +
              (na(sonSic) ? "" : " · son ilk-10 sıçraması " + str.tostring(sonSic) + " bar önce") +
-             "\nÖlçüt: " + benchAd + " · pencere β " + str.tostring(lenB) + " / ayrışma " + str.tostring(lenA) + " bar" +
-             "\nDominans rejimi: " + rejS
+             "\nCoin (vs " + benchAd + "): " + fs(z) + "σ · beklenen " + fs1(uy_bekP) + "% / gerçek " + fs1(uy_gerP) + "%" +
+             "\nPencere: β " + str.tostring(lenB) + " / ayrışma " + str.tostring(lenA) + " bar · akış arındırma " + (rj_ntr ? "açık" : "kapalı") +
+             (uy_krn ? "\n── Karne (durum başladıktan sonraki " + str.tostring(lenA) + " bar) ──" +
+             "\nEN GÜÇLÜ: " + f_kSatir(0) + "\nLehte: " + f_kSatir(1) + "\nUYUMSUZ: " + f_kSatir(2) +
+             "\nNötr: " + f_kSatir(3) + "\nAleyhte: " + f_kSatir(4) + "\nEN ZAYIF: " + f_kSatir(5) +
+             "\nTüm barlar: " + (kr_hN > 0 ? "ort. " + fs1(kr_hT / kr_hN) + "%" : "—") : "")
         table.cell(uyT, 0, 0, uyTxt, text_color = uy_col, text_size = uy_sz, text_halign = text.align_left,
              bgcolor = color.new(uy_col, uy_ton == 0 ? 92 : 84), tooltip = uyTip)
