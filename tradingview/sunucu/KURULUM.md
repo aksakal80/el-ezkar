@@ -3,7 +3,8 @@
 TradingView'daki **AYRIŞMA + MSB-OB** göstergesinin piyasa uyumu kısmının sunucu
 karşılığıdır. Aynı formüllerle çalışır. OTHERS evrenindeki bütün coinleri (ilk 10 ve
 hisse/emtia perp'leri hariç) 1 saat ve 4 saatte tarar. Her coin için şu soruya cevap
-verir: **"Coinin fiyatı, majör piyasanın (BTC + ETH) durumuyla uyumlu mu?"**
+verir: **"Coinin fiyatı, piyasanın (BTC + ETH + majörler) ve paranın altlara akıp akmadığının
+(OTHERS.D payı) durumuyla uyumlu mu?"**
 
 Panel adresi (kurulumdan sonra): `https://veri.ayaydin.tr/ayrisma_panel.html`
 
@@ -18,14 +19,17 @@ Panel adresi (kurulumdan sonra): `https://veri.ayaydin.tr/ayrisma_panel.html`
 
 **Yeni oluşan dosyalar:**
 - `/var/www/veri/ayrisma.json`: panelin okuduğu çıktı.
-- `/root/projelerim/ayrisma_dom_gecmis.json`: saatlik dominans geçmişi.
+- `/root/projelerim/ayrisma_dom_gecmis.json`: saatlik dominans geçmişi (paylar, TOTAL, OTHERS).
 
 **Dokunulmayan mevcut dosyalar:** Hiçbiri değiştirilmez. Aşağıdakiler yalnızca okunur:
 - `/var/www/veri/ticker_ws.json` (ws_ticker üretir): coin listesi, 24 saatlik veri, fonlama.
-- `/var/www/veri/dom.json` (dom_export üretir): USDT.D, BTC.D, OTHERS.D, ETH.D.
+- `/var/www/veri/dom.json` (dom_export üretir): USDT.D, BTC.D, OTHERS.D, ETH.D, TOTAL, OTHERS.
 
-**Ağ:** Yalnızca Bybit'in herkese açık kline adresi kullanılır (`api.bybit.com/v5/market/kline`,
-saniyede en fazla 8 istek). Binance fapi'ye hiç istek atılmadığı için `.fapi_ban` kapısı gerekmez.
+**Ağ:**
+- Bybit'in herkese açık kline adresi (`api.bybit.com/v5/market/kline`, saniyede en fazla 8 istek).
+- Çalışma başına 1 istek CoinGecko `/api/v3/global`. Yalnızca USDC payı için kullanılır, çünkü
+  `dom.json`'da USDC.D yok. Alınamazsa akış yine çalışır; USDC o zaman "diğer ilk-10" içinde kalır.
+- Binance fapi'ye hiç istek atılmaz, bu yüzden `.fapi_ban` kapısı gerekmez.
 
 **Bağımlılık:** Yalnızca Python standart kütüphanesi kullanılır; `pip install` gerekmez.
 
@@ -58,13 +62,32 @@ systemctl list-timers --no-pager | grep ayrisma
 Tarayıcıda `https://veri.ayaydin.tr/ayrisma_panel.html` adresini açın. İsterseniz Panel
 Merkezi'ne ve Piyasa Panosu'na kendiniz bir bağlantı ekleyin (mevcut sayfalara ben dokunmadım).
 
-## İlk günler: dominans rejiminin ısınması
+## Para akışı nasıl hesaplanır, ilk günler
 
-`dom.json` yalnızca anlık değer veriyor. Bu yüzden rejim hesabı (12 saatlik değişimin
-kendi oynaklığına oranı) için geçmiş, çalışma başına bir örnekle biriktirilir. Yaklaşık
-**36 saat** boyunca rejim kartında "Isınıyor" yazar; bu sürede oylar sayılmaz ve mevcut
-dominans panelinizin yorumu gösterilir. Coin tablosu, piyasa yönü ve altcoin grubu ilk
-çalışmadan itibaren tam çalışır.
+Dominanslar aynı toplamın **paylarıdır**. Bu yüzden değişimleri yüzde **puan** olarak toplanır;
+izleme listenizdeki "Değ" sütunu da budur.
+
+- **Karar OTHERS.D'den verilir.** OTHERS.D'nin 24 saatlik puan değişimi, bu değişimin son 1
+  haftadaki olağan büyüklüğüne (σ) bölünür: ≥ +1σ ise para altlara giriyor, ≤ −1σ ise çıkıyor.
+- **Derece:** <0,5σ yok denecek kadar az · 0,5–1σ hafif · 1–2σ belirgin · ≥2σ güçlü.
+- **Dolar karşılığı:** puan × TOTAL.
+- **Nereye / nereden:** Paranın nereye ya da nereden aktığını dört kalem gösterir:
+  - stabil payı (USDT.D + USDC.D),
+  - ETH.D,
+  - BTC.D,
+  - diğer ilk-10 (majörler; kalan pay).
+
+  Bu kalemler ayrıca oy vermez, bu yüzden aynı fiyat hareketi iki kez sayılmaz.
+- **Sıçrama filtresi:** OTHERS'ın ($) bir saatlik değişiminin alt sepetince açıklanamayan kısmı
+  çok büyükse (ilk-10 giriş/çıkışı ya da veri düzeltmesi), o saatteki OTHERS.D değişimi 0 sayılır.
+  Panelde ✂ ile gösterilir.
+
+`dom.json` yalnızca anlık değer verir. σ için gereken geçmiş, her çalışmada bir örnek eklenerek
+birikir. İlk **~48 saat** kartta "akış ısınıyor" yazar. Bu sürede:
+- akış "nötr" sayılır,
+- puanlar `dom.json`'daki 24 saatlik değişimden gösterilir (sıçrama filtresiz).
+
+Coin tablosu, piyasa yönü ve alt sepeti ilk çalışmadan itibaren tam çalışır.
 
 ## Kontrol ve log
 
@@ -89,14 +112,16 @@ komutunu çalıştırın.
 | `AYR_HARIC_EK` | boş | Evrenden ayrıca çıkarılacaklar, örn. `ABC,XYZ` (yeni hisse/emtia perp'i görürseniz) |
 | `AYR_ISTEK_HIZI` | `8` | Bybit'e saniyede en fazla istek |
 | `AYR_PARALEL` | `4` | Aynı anda kaç istek |
+| `AYR_USDC_URL` | CoinGecko `/global` | USDC payının alındığı adres; boş bırakılırsa USDC "diğer ilk-10" içinde kalır |
 
-Formül sabitleri dosyanın başında (`TF`, `UYUM_BANT`, `PIYASA_ESIK`, `DOM_OY`, `HARIC`)
-ve göstergenin varsayılan ayarlarıyla aynıdır:
-- Majör sepeti: BTC 0,70 + ETH 0,30.
-- Pencereler: 1 saatte β 168 / ayrışma 24 bar, 4 saatte β 120 / ayrışma 30 bar.
-- Eşikler: uyum bandı ±1σ, piyasa yön eşiği ±0,5σ, OTHERS.D 2 oy.
+Formül sabitleri dosyanın başındadır (`TF`, `UYUM_BANT`, `PIYASA_ESIK`, `AKIS_*`, `MAJORLER`,
+`HARIC`). Değerleri göstergenin varsayılan ayarlarıyla aynıdır:
+- **Piyasa:** BTC, ETH ve majörler, her biri ⅓ ağırlıkla. Majörler, BTC ve ETH hariç ilk 10'daki
+  stabil olmayan coinlerdir (XRP, BNB, SOL, DOGE, TRX, ADA) ve kendi içinde eşit ağırlıklıdır.
+- **Pencereler:** 1 saatte β 168 / ayrışma 24 bar, 4 saatte β 120 / ayrışma 30 bar.
+- **Eşikler:** uyum bandı ±1σ, piyasa yön eşiği ±0,5σ, akış eşiği ±1σ (OTHERS.D, 24 saat).
 
-İlk 10 sıralaması değişirse `HARIC` listesini güncelleyin.
+İlk 10 sıralaması değişirse `MAJORLER` ve `HARIC` listelerini güncelleyin.
 
 ## Geri alma
 
@@ -114,6 +139,10 @@ rm /var/www/veri/ayrisma_panel.html /var/www/veri/ayrisma.json
   değildir. Eşit ağırlıklıdır ve ilk-10 giriş/çıkış sıçraması içermez. Sizin küçük
   coinleriniz için daha temsilidir, ama TradingView'daki OTHERS çizgisiyle birebir aynı değildir.
 - **Birleşik AL/SAT ve MSB:** Panelde yok. MSB zaten `msb_ob_bot` tarafından hesaplanıyor.
+- **OTHERS.D kaynağı:** Değer `dom.json`'dan (CoinGecko) gelir. TradingView'daki
+  CRYPTOCAP:OTHERS.D ile ilk-10 tanımı ve güncellenme zamanı farklı olabilir, bu yüzden
+  küçük farklar normaldir.
 - **Test:** Hesaplar göstergeyle aynı formüllerdir ve panel ile sunucu aynı sonucu verir
-  (ör. HBAR 1s +5,38σ her ikisinde). Ancak sinyallerin başarısı gerçek veride test edilmedi.
+  (ör. HBAR 1s +5,39σ her ikisinde). Karne sinyallerin geçmişteki sonucunu gösterir, ancak
+  geleceği garanti etmez.
 - **Uyarı:** Yatırım tavsiyesi değildir.

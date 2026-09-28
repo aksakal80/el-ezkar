@@ -12,6 +12,7 @@ ExecStart=/root/venv/bin/python3 /root/projelerim/ayrisma_export.py
 # Ayarları değiştirmek için (isteğe bağlı), örn.:
 # Environment=AYR_MIN_HACIM=5000000
 # Environment=AYR_HARIC_EK=ABC,XYZ
+# Environment=AYR_USDC_URL=          (boş = USDC payını CoinGecko'dan alma)
 Nice=10
 TimeoutStartSec=15min
 

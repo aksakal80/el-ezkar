@@ -147,7 +147,7 @@ details summary{cursor:pointer;font-weight:600;font-size:.86rem}
 <details>
   <summary>Nasıl hesaplanıyor, durumlar nasıl okunur?</summary>
   <p class="not"><b>1) Piyasa:</b> BTC, ETH ve majörler (BTC ve ETH hariç ilk 10: XRP, BNB, SOL, DOGE, TRX, ADA — eşit ağırlıklı sepet), her biri ⅓ ağırlıkla. Birikmiş hareket kendi oynaklığına bölünür: ≥ +0,5σ ↑, ≤ −0,5σ ↓, arası ↔. TOTAL2 / TOTAL3 kullanılmaz.<br>
-  <b>2) Para akışı:</b> USDT.D ↓, BTC.D ↓, OTHERS.D ↑ (2 oy) altlar lehine oy verir. Dominanslar kısmen fiyattan türediği için (piyasa düşünce USDT.D mekanik yükselir) her birinin 12 saatlik değişiminden piyasanın aynı dönemdeki hareketinin açıkladığı kısım çıkarılır; oy yalnız kalan kısma göre verilir (±1σ). Çoğunluk → altlara giriyor / nötr / çıkıyor (nakde · BTC'ye).<br>
+  <b>2) Para akışı:</b> dominanslar aynı toplamın <b>paylarıdır</b>; değişimleri yüzde <b>puan</b> olarak toplanır (izleme listesindeki "Değ"). Karar coinlerinizin grubunun payından, <b>OTHERS.D</b>'den verilir: 24 saatlik puan değişimi, bu değişimin son 1 haftadaki olağan büyüklüğüne (σ) bölünür → ≥ +1σ altlara giriyor, ≤ −1σ çıkıyor. Derece: &lt;0,5σ yok denecek kadar az · 0,5–1 hafif · 1–2 belirgin · ≥2 güçlü. Dolar karşılığı = puan × TOTAL. Paranın nereye / nereden aktığını stabil payı (USDT.D + USDC.D), ETH.D, BTC.D ve diğer ilk-10 (majörler; kalan pay) gösterir — bunlar ayrıca oy vermez, fiyat hareketi çift sayılmaz. OTHERS'ta alt sepetinin açıklamadığı tek saatlik sıçrama (ilk-10 giriş/çıkışı, veri düzeltmesi) sayılmaz (✂).<br>
   <b>3) Altlar için durum</b> = piyasa × akış (tablo aşağıda).<br>
   <b>4) Coin:</b> getirisinden piyasa ve alt sepeti (taranan coinlerin medyan getirisi) birlikte, coinin kendi geçmiş duyarlılıklarıyla (β, son 1 hafta / 20 gün) çıkarılır; kalanın birikimi oynaklığına bölünür (σ): ≥ +1 önde, ≤ −1 geride, arası uyumlu.<br>
   <b>Karne:</b> her coin durumu başladıktan sonraki pencere boyunca (1s: 24 bar, 4s: 30 bar) coinin getirisi ve alt sepetine göre fazla getirisi, bütün coinler üzerinden ölçülür. "Tüm barlar" satırı tabandır; bir durumun değeri tabandan farkıdır. Geçmiş sonuç geleceği garanti etmez.</p>
@@ -352,22 +352,34 @@ function ozetCiz() {
   var pRenk = p.m > 0 ? 'poz' : p.m < 0 ? 'neg' : 'mut';
   var fRenk = rj.f > 0 ? 'poz' : rj.f < 0 ? 'neg' : 'mut';
   var oRenk = o.a > 0 ? 'poz' : o.a < 0 ? 'neg' : 'mut';
-  var oylar = (rj.oylar || []).map(function (x) {
-    var oyT = x.oy > 0 ? '<span class="poz">+' + x.oy + '</span>' : x.oy < 0 ? '<span class="neg">' + x.oy + '</span>' : '<span class="mut">0</span>';
-    var zT = x.z === null || x.z === undefined ? (x.chg24 !== null && x.chg24 !== undefined ? '24s ' + sgn(x.chg24, 2) : '—') : x.ok + ' ' + sgn(x.z, 1) + 'σ';
-    return '<div class="oy"><span>' + esc(x.k) + ' <span class="mut">' + (x.deger !== null && x.deger !== undefined ? '%' + nf(x.deger, 2) : '') + '</span></span><span>' + zT + ' · oy ' + oyT + '</span></div>';
-  }).join('') + (rj.bilgi || []).map(function (x) {
-    var zT = x.z === null || x.z === undefined ? (x.chg24 !== null && x.chg24 !== undefined ? '24s ' + sgn(x.chg24, 2) : '—') : x.ok + ' ' + sgn(x.z, 1) + 'σ';
-    return '<div class="oy mut"><span>' + esc(x.k) + ' (bilgi)</span><span>' + zT + '</span></div>';
+  var mlr = function (x) { return x === null || x === undefined ? '' : ' · ≈ ' + sgn(x / 1e9, 1) + ' mlr $'; };
+  var oth = rj.oth || null;
+  var othSatir = oth ? '<div class="oy"><span><b>OTHERS.D</b> <span class="mut">%' + nf(oth.deger, 2) + '</span></span><span class="' + fRenk + '"><b>' + sgn(oth.pp, 2) + ' puan</b>' +
+    (oth.z !== null && oth.z !== undefined ? ' · ' + sgn(oth.z, 1) + 'σ ' + esc(oth.derece || '') : '') + mlr(oth.usd) + '</span></div>' : '';
+  // Karşı kalemler: pay KAZANAN her grup altların aleyhine (kırmızı), pay KAYBEDEN altların lehine (yeşil)
+  var kalemler = (rj.kalemler || []).map(function (x) {
+    var rr = x.pp === null || x.pp === undefined ? 'mut' : x.pp > 0.005 ? 'neg' : x.pp < -0.005 ? 'poz' : 'mut';
+    return '<div class="oy"><span>' + esc(x.ad) + (x.deger !== null && x.deger !== undefined ? ' <span class="mut">%' + nf(x.deger, 2) + '</span>' : '') +
+      '</span><span class="' + rr + '">' + (x.pp === null || x.pp === undefined ? '—' : sgn(x.pp, 2) + ' puan' + mlr(x.usd)) + '</span></div>';
   }).join('');
-  var isin = rj.durum === 'ısınıyor' ? '<div class="satir">Geçmiş birikiyor: ' + (rj.ornek || 0) + '/' + (rj.gerekli || '—') + ' saatlik örnek; bu sürede akış "nötr" sayılır.' +
-    (rj.dom_regime ? ' Dominans panelinizin yorumu: <b>' + esc(rj.dom_regime) + '</b>' : '') + '</div>' : '';
+  var nereye = rj.nereye ? '<div class="satir">' + (rj.yon === 'nereden' ? 'Nereden geliyor: ' : 'Nereye gidiyor: ') + '<b>' + esc(rj.nereye) + '</b> puan</div>' : '';
+  var olcek = rj.sigma ? 'Ölçek: OTHERS.D\'nin 24 saatlik olağan değişimi ±' + nf(rj.sigma, 2) + ' puan (son ' + rj.sigma_n + ' saat) · karar eşiği ±' + nf(rj.esik || 1, 1) + 'σ' : '';
+  var notlar = [];
+  if (rj.durum === 'ısınıyor') notlar.push('Ölçek birikiyor: ' + (rj.sigma_n || 0) + '/' + (rj.gerekli || 24) + ' örnek (~48 saat). Bu sürede akış "nötr" sayılır; puanlar dom.json\'un 24 saatlik değişiminden (sıçrama filtresiz).' +
+    (rj.dom_regime ? ' Dominans panelinizin yorumu: <b>' + esc(rj.dom_regime) + '</b>' : ''));
+  if (rj.durum === 'veri yok') notlar.push('Dominans verisi güncel değil; akış "nötr" sayılıyor.');
+  if (rj.sicrama_24s) notlar.push('✂ Son 24 saatte ' + rj.sicrama_24s + ' saatlik OTHERS sıçraması (ilk-10 değişimi / veri düzeltmesi) sayılmadı.');
+  if (rj.celiski) notlar.push('Alt sepeti 24 saatte ' + sgn(rj.alt24, 2) + '% yükselirken pay düşüyor → altlar piyasanın gerisinde kalıyor.');
+  if (rj.durum !== 'ısınıyor' && rj.kaynak) notlar.push('Kaynak: ' + esc(rj.kaynak) + (rj.usdc ? '' : ' · USDC payı alınamadı, "diğer ilk-10" içinde'));
+  var akisKart = '<div class="kart"><small>2) Para akışı · dominans payları, son ' + (rj.pencere_sa || 24) + ' saat (yüzde puan)</small><div class="buyuk ' + fRenk + '" style="font-size:1rem">' + esc(rj.akis || '—') + '</div>' +
+    '<div class="satir">' + othSatir + kalemler + '</div>' + nereye +
+    (olcek ? '<div class="satir mut">' + olcek + '</div>' : '') +
+    (notlar.length ? '<div class="satir mut">' + notlar.join('<br>') + '</div>' : '') + '</div>';
   $('ozet').innerHTML =
     '<div class="kart"><small>1) Piyasa · BTC + ETH + majörler (⅓ ağırlık) · ' + TF_AD[TF] + '</small><div class="buyuk ' + pRenk + '">' + pYon + '</div>' +
       '<div class="satir">' + sure + ': ' + sgn(p.pct, 2) + '% · ' + sgn(p.z, 2) + 'σ' + (p.sure ? ' · ' + p.sure + ' bardır böyle' : '') + '</div>' +
       '<div class="satir">' + ayaklar + '</div></div>' +
-    '<div class="kart"><small>2) Para akışı · piyasadan arındırılmış · puan ' + sgn(rj.puan, 0) + '/' + (rj.n || 4) + '</small><div class="buyuk ' + fRenk + '" style="font-size:1rem">' + esc(rj.akis || '—') + '</div>' +
-      '<div class="satir">' + oylar + '</div>' + isin + '</div>' +
+    akisKart +
     '<div class="kart"><small>3) Altlar için durum = piyasa × akış</small><div class="buyuk ' + oRenk + '" style="font-size:1.05rem">' + esc(o.metin) + '</div>' +
       '<div class="satir">Alt sepeti (' + g.n + ' coin medyanı): ' + sure + ' ' + sgn(g.pct, 2) + '% · piyasaya göre ' + sgn(g.z, 2) + 'σ</div>' +
       '<div class="satir mut">Güncelleme: ' + esc(DATA.updated_human || '') + (yas > 150 ? ' · <span class="bayat">veri ' + Math.round(yas / 60) + ' saattir güncellenmedi</span>' : '') +
@@ -507,7 +519,7 @@ function satirYaz(i) {
   if (son) {                                         // son bar: tam durum (akış güncel)
     var o = T.ortam || ortam(m, 0), t = ton(o.a, c);
     renk = tonRenk(t);
-    html = '<span class="mut">' + zamanTR(DETAY.ms[i]) + '</span> · Piyasa ' + ok(m) + ' ' + sgn(DETAY.pct[i], 2) + '% · ' + esc(rj.akis || 'akış —') +
+    html = '<span class="mut">' + zamanTR(DETAY.ms[i]) + '</span> · Piyasa ' + ok(m) + ' ' + sgn(DETAY.pct[i], 2) + '% · ' + esc(rj.akis || 'akış —') + (rj.oth ? ' (OTHERS.D ' + sgn(rj.oth.pp, 2) + ' puan)' : '') +
       ' → ' + esc(o.metin) + ' · Coin ' + sgn(DETAY.z[i], 2) + 'σ → <b>' + esc(durumMetni(o.a, c)) + '</b>';
   } else {                                           // geçmiş bar: akış bilinmez → majör yönü + coin durumu
     renk = c > 0 ? css('--tav') : c < 0 ? css('--dip') : css('--sol');
