@@ -8,7 +8,7 @@
 //  v2'DE YENİ
 //    ⚡ Birleşik sinyal motoru (BÖLÜM 30)
 //       Beş bağımsız teyit (fiyat yapısı · σ yapısı · ayrışma · trend ·
-//       USDT.D rejimi) oy verir. Skor eşiği keserse AL / SAT etiketi çıkar.
+//       dominans rejimi) oy verir. Skor eşiği keserse AL / SAT etiketi çıkar.
 //       Etiketin üzerine gelince: gerekçe, yapısal stop, 1R / 2R hedef.
 //    📋 Tek bilgi paneli (BÖLÜM 31)
 //       Skor, son sinyal ve getirisi, ayrışma, β, korelasyon, hacim, rejim,
@@ -18,6 +18,16 @@
 //       LuxAlgo OB, DİO çizgisi) tek tuşla gizler.
 //    🎨 Osilatör: güce göre gradyan renk, gradyan dolgu, ±1σ nötr bant,
 //       altta skor şeridi.
+//
+//  v2.1 — ALTCOIN (OTHERS) İÇİN ÖLÇÜT VE REJİM
+//    • Ayrışma artık varsayılan olarak 2 FAKTÖRE göre ölçülür: coinin getirisinden
+//      BTC ve altcoin piyasası (CRYPTOCAP:OTHERS) çok değişkenli regresyonla
+//      birlikte çıkarılır. Kalan σ, coinin gerçekten kendine ait hareketidir.
+//      (Eski BTC + ETH ölçütü seçenek olarak duruyor.)
+//    • Rejim: USDT.D + USDC.D, BTC.D, OTHERS.D (ve isteğe bağlı ETH.D) oylarıyla
+//      hesaplanır; her biri kendi oynaklığına göre (σ) ölçülür. Dominanslar
+//      getiriden ÇIKARILMAZ (aynı piyasa değerlerinin oranlarıdır, çift sayılır);
+//      para akışı filtresi olarak kullanılır.
 //
 //  DÜZELTİLEN HATALAR
 //    • Be-OB döngüsünde eksik "else" → kırılan kutu için de alarm çalıyordu.
@@ -59,7 +69,7 @@ sade = input.bool(false, "🧹 Sade görünüm (yardımcı katmanları gizle)", 
 
 gS = "⚡🎯⚡🎯⚡ BİRLEŞİK SİNYAL (AL / SAT) ⚡🎯⚡🎯⚡"
 sig_on      = input.bool(true, "AL / SAT etiketlerini göster", group = gS,
-     tooltip = "Beş bağımsız teyit (fiyat yapısı, σ yapısı, ayrışma, trend, USDT.D rejimi) +1 / −1 / 0 oy verir. Skor gereken teyit sayısını YUKARI keserse AL, eksi tarafta AŞAĞI keserse SAT çıkar. Tüm oylar aynı yöndeyse GÜÇLÜ yazar. Etiketin üzerine gelince gerekçe, yapısal stop ve 1R / 2R hedef görünür.")
+     tooltip = "Beş bağımsız teyit (fiyat yapısı, σ yapısı, ayrışma, trend, dominans rejimi) +1 / −1 / 0 oy verir. Skor gereken teyit sayısını YUKARI keserse AL, eksi tarafta AŞAĞI keserse SAT çıkar. Tüm oylar aynı yöndeyse GÜÇLÜ yazar. Etiketin üzerine gelince gerekçe, yapısal stop ve 1R / 2R hedef görünür.")
 sig_min     = input.int(3, "Gereken teyit sayısı", minval = 1, maxval = 5, group = gS,
      tooltip = "Açık bileşen sayısından büyükse otomatik olarak ona indirilir. Büyüdükçe daha az ama daha seçici sinyal.")
 sig_conf    = input.bool(true, "Bar kapanışını bekle (repaint yok)", group = gS,
@@ -69,8 +79,8 @@ sig_cMSB    = input.bool(true, "Fiyat yapısı",  inline = "sc1", group = gS)
 sig_cZM     = input.bool(true, "σ yapısı",      inline = "sc1", group = gS)
 sig_cZ      = input.bool(true, "Ayrışma ±1σ",   inline = "sc1", group = gS)
 sig_cTrd    = input.bool(true, "Trend (EMA)",   inline = "sc2", group = gS)
-sig_cReg    = input.bool(true, "USDT.D rejimi", inline = "sc2", group = gS,
-     tooltip = "Rejim bileşeni yalnızca 'USDT.D zemin tonu' açıkken oy kullanır.")
+sig_cReg    = input.bool(true, "Dominans rejimi", inline = "sc2", group = gS,
+     tooltip = "Rejim bileşeni yalnızca REJİM grubunda 'Rejimi hesapla' açıkken oy kullanır.")
 sig_trLen   = input.int(50, "Trend EMA uzunluğu", minval = 5, maxval = 500, inline = "tr", group = gS)
 sig_trShow  = input.bool(false, "Grafikte çiz", inline = "tr", group = gS)
 sig_colBuy  = input.color(#00c853, "Renk: AL",  inline = "scol", group = gS)
@@ -95,11 +105,16 @@ db_szStr = input.string("Küçük", "Yazı boyutu", options = ["Çok küçük", 
 // ██████████ KISIM 1 — AYRIŞMA (yankı düzeltmeli) ██████████
 
 // ── Girdiler ────────────────────────────────────────────────────────────────
-g1 = "🌟🎯🌟🎯🌟 AYRIŞMA · PİYASA FAKTÖRÜ 🌟🎯🌟🎯🌟"
+g1 = "🌟🎯🌟🎯🌟 AYRIŞMA · KARŞILAŞTIRMA ÖLÇÜTÜ 🌟🎯🌟🎯🌟"
+benchMode = input.string("2 faktör: BTC + altcoin (önerilen)", "Coin neye göre ölçülsün?",
+     options=["2 faktör: BTC + altcoin (önerilen)", "Altcoin endeksi (OTHERS)", "BTC + ETH (eski)"], group=g1,
+     tooltip="2 faktör: coinin getirisinden BTC'nin ve altcoin piyasasının (OTHERS) etkisi AYNI ANDA çıkarılır (çok değişkenli regresyon). Kalan ayrışma coinin gerçekten KENDİNE ait hareketidir. OTHERS'taki coinler için önerilen budur.\nAltcoin endeksi: yalnızca OTHERS'a göre ölçülür.\nBTC + ETH (eski): v1 davranışı; altcoin mevsimi bu ölçütte coinin kendi ayrışması gibi görünür.")
 symBtc = input.symbol("BINANCE:BTCUSDT.P", "BTC sembolü", group=g1)
 symEth = input.symbol("BINANCE:ETHUSDT.P", "ETH sembolü", group=g1)
+symOth = input.symbol("CRYPTOCAP:OTHERS", "Altcoin endeksi", group=g1,
+         tooltip="OTHERS = piyasa değerine göre ilk 10 dışındaki tüm coinlerin toplam değeri. Coin ilk 10'a yakın büyük bir altcoinse CRYPTOCAP:TOTAL3 (BTC ve ETH hariç tümü) daha uygun olabilir.")
 wBtc   = input.float(0.70, "BTC ağırlığı (kalanı ETH)", minval=0.0, maxval=1.0, step=0.05, group=g1,
-         tooltip="Piyasa faktörü = ağırlık × BTC getirisi + (1 − ağırlık) × ETH getirisi.")
+         tooltip="Yalnızca 'BTC + ETH (eski)' ölçütünde kullanılır. Piyasa = ağırlık × BTC getirisi + (1 − ağırlık) × ETH getirisi.")
 lenB   = input.int(100, "β / korelasyon penceresi (bar)", minval=20, maxval=1000, group=g1,
          tooltip="Coinin piyasaya duyarlılığının (β) ve korelasyonun ölçüldüğü pencere.")
 lenA   = input.int(30,  "Ayrışma penceresi (bar)",       minval=3,  maxval=500,  group=g1,
@@ -107,11 +122,22 @@ lenA   = input.int(30,  "Ayrışma penceresi (bar)",       minval=3,  maxval=500
 pencTip= input.string("Sönümlü (yankısız)", "Pencere tipi", options=["Sönümlü (yankısız)","Sert pencere (eski)"], group=g1,
          tooltip="Sert pencere, coinin kendi sıçramasını tam lenA bar sonra SAHTE olarak tekrarlar (yankı). Sönümlü birikimde bu yoktur.")
 
-g2 = "💧🌊💧🌊💧 AYRIŞMA · REJİM (USDT.D) 💧🌊💧🌊💧"
-useDom = input.bool(false, "USDT.D zemin tonu", group=g2)
-symDom = input.symbol("CRYPTOCAP:USDT.D", "Dominans sembolü", group=g2)
-lenDom = input.int(12, "Değişim penceresi (bar)", minval=1, group=g2)
-domTh  = input.float(1.2, "Rejim eşiği (%) — büyütürsen zemin sadeleşir", minval=0.0, step=0.1, group=g2)
+g2 = "💧🌊💧🌊💧 REJİM · DOMİNANSLAR (para akışı) 💧🌊💧🌊💧"
+useDom  = input.bool(true, "Rejimi hesapla (sinyal + panel + zemin)", group=g2,
+          tooltip="Dominanslar coinin getirisinden ÇIKARILMAZ: hepsi aynı piyasa değerlerinin oranıdır, çıkarılırsa aynı etki iki kez sayılır. Bunun yerine paranın altcoinlere mi, BTC'ye mi, stabil coinlere mi aktığını gösteren bir REJİM filtresi olarak oy verirler. Her dominansın son N bardaki değişimi kendi oynaklığına bölünür (σ); eşiği aşan oy kullanır.")
+rj_stb  = input.bool(true, "Stabil payı ▲ = risk-off", inline="rs", group=g2)
+symDom  = input.symbol("CRYPTOCAP:USDT.D", "", inline="rs", group=g2)
+symUsdc = input.symbol("CRYPTOCAP:USDC.D", "+", inline="rs", group=g2,
+          tooltip="USDT.D + USDC.D toplanır. Stabil coinlerin payı artıyorsa para kenara çekiliyor demektir.")
+rj_btc  = input.bool(true, "BTC.D ▲ = altlar için olumsuz", inline="rb", group=g2)
+symBtcD = input.symbol("CRYPTOCAP:BTC.D", "", inline="rb", group=g2)
+rj_oth  = input.bool(true, "OTHERS.D ▲ = küçük altlar için olumlu", inline="ro", group=g2)
+symOthD = input.symbol("CRYPTOCAP:OTHERS.D", "", inline="ro", group=g2)
+rj_eth  = input.bool(false, "ETH.D ▲ = alt rotasyonu öncüsü", inline="re", group=g2)
+symEthD = input.symbol("CRYPTOCAP:ETH.D", "", inline="re", group=g2,
+          tooltip="Varsayılan KAPALI: ETH.D yükselişi bazen altcoin rotasyonunun öncüsüdür, bazen de paranın küçük altlardan ETH'ye kaçtığını gösterir; küçük altlar için yönü belirsizdir. Kapalıyken oy vermez, yalnızca bilgi panelinde görünür.")
+lenDom  = input.int(12, "Değişim penceresi (bar)", minval=1, group=g2)
+domTh   = input.float(1.0, "Oy eşiği (σ) — büyütürsen rejim sadeleşir", minval=0.1, step=0.1, group=g2)
 
 g3 = "✨👁✨👁✨ AYRIŞMA · GÖRÜNÜM ✨👁✨👁✨"
 showShadow = input.bool(false, "Beklenen fiyat çizgisi", group=g3)
@@ -125,31 +151,77 @@ gR = "🌈🎨🌈🎨🌈 AYRIŞMA · RENKLER 🌈🎨🌈🎨🌈"
 colUp  = input.color(#26a69a, "Pozitif ayrışma",  group=gR)
 colDn  = input.color(#ef5350, "Negatif ayrışma",  group=gR)
 colNe  = input.color(#787b86, "Nötr / çizgi / yazı", group=gR)
-colOff = input.color(#ef5350, "Zemin: risk-off (USDT.D yükseliyor)", group=gR)
-colOn  = input.color(#26a69a, "Zemin: risk-on (USDT.D düşüyor)",     group=gR)
+colOff = input.color(#ef5350, "Zemin: risk-off (para altlardan çıkıyor)", group=gR)
+colOn  = input.color(#26a69a, "Zemin: risk-on (altlara para giriyor)",     group=gR)
 zemSid = input.int(5, "Zemin tonu şiddeti (0 = kapalı, 10 = koyu)", minval=0, maxval=10, group=gR)
 bantSid= input.int(9, "Boşluk bandı şiddeti (0 = kapalı, 10 = koyu)", minval=0, maxval=10, group=gR)
 
 // ── Veri (repaint güvenli: lookahead_off) ───────────────────────────────────
+mdEski  = benchMode == "BTC + ETH (eski)"
+mdOth   = benchMode == "Altcoin endeksi (OTHERS)"
+md2F    = not mdEski and not mdOth
+benchAd = md2F ? "BTC+OTHERS" : mdOth ? "OTHERS" : "BTC+ETH"
+
 [btc, vBtc] = request.security(symBtc, timeframe.period, [close, volume], barmerge.gaps_off, barmerge.lookahead_off)
 eth         = request.security(symEth, timeframe.period, close,           barmerge.gaps_off, barmerge.lookahead_off)
-dom         = useDom ? request.security(symDom, timeframe.period, close,  barmerge.gaps_off, barmerge.lookahead_off) : float(na)
+oth         = mdEski ? float(na) : request.security(symOth, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
+
+// Dominanslar yalnızca rejim açıkken istenir (ETH.D oy vermese de bilgi için alınır)
+dUsdt = useDom and rj_stb ? request.security(symDom,  timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off) : float(na)
+dUsdc = useDom and rj_stb ? request.security(symUsdc, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off) : float(na)
+dBtcD = useDom and rj_btc ? request.security(symBtcD, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off) : float(na)
+dOthD = useDom and rj_oth ? request.security(symOthD, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off) : float(na)
+dEthD = useDom            ? request.security(symEthD, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off) : float(na)
+dStb  = na(dUsdc) ? dUsdt : dUsdt + dUsdc
 
 lr(_s) => na(_s) or na(_s[1]) or _s[1] <= 0 ? 0.0 : math.log(_s / _s[1])
 
-rc = lr(close)
-rm = wBtc * lr(btc) + (1.0 - wBtc) * lr(eth)
+rc    = lr(close)
+rB    = lr(btc)
+rE    = lr(eth)
+rO    = lr(oth)
+rmLeg = wBtc * rB + (1.0 - wBtc) * rE        // eski tek faktör (BTC + ETH)
 
-// ── β (kayan) ───────────────────────────────────────────────────────────────
-mC   = ta.sma(rc, lenB)
-mM   = ta.sma(rm, lenB)
-cov  = ta.sma(rc * rm, lenB) - mC * mM
-vari = ta.sma(rm * rm, lenB) - mM * mM
-beta = vari > 0 ? cov / vari : 1.0
-beta := math.max(-1.0, math.min(4.0, nz(beta, 1.0)))
+// ── Piyasa modeli (kayan kovaryans; her barda hesaplanır — CW10002) ────────
+// 2 faktörde çok değişkenli EKK kullanılır: coin = b1·BTC + b2·OTHERS + artık.
+// BTC ile OTHERS birlikte hareket ettiği için ikisi AYRI AYRI çıkarılsaydı
+// ortak kısım iki kez düşülürdü; çok değişkenli çözüm bunu engeller.
+f_cov(float _a, float _b, int _n) => ta.sma(_a * _b, _n) - ta.sma(_a, _n) * ta.sma(_b, _n)
+f_kis(float _x, float _lo, float _hi) => math.max(_lo, math.min(_hi, _x))
+
+cLL  = f_cov(rmLeg, rmLeg, lenB)
+cLC  = f_cov(rmLeg, rc,    lenB)
+cBB  = f_cov(rB, rB, lenB)
+cOO  = f_cov(rO, rO, lenB)
+cBO  = f_cov(rB, rO, lenB)
+cBC  = f_cov(rB, rc, lenB)
+cOC  = f_cov(rO, rc, lenB)
+det2 = cBB * cOO - cBO * cBO
+
+float beta  = 1.0       // BTC'ye (ya da tek faktöre) TOPLAM duyarlılık — panelde gösterilir
+float beta2 = na        // BTC'den bağımsız altcoin piyasasına duyarlılık (yalnız 2 faktör)
+float fit   = 0.0       // piyasanın açıkladığı getiri
+bool  othOk = not na(cOO) and cOO > 0
+if mdEski
+    beta := not na(cLL) and cLL > 0 ? f_kis(cLC / cLL, -1.0, 4.0) : 1.0
+    fit  := beta * rmLeg
+else if mdOth and othOk
+    beta := f_kis(cOC / cOO, -1.0, 4.0)
+    fit  := beta * rO
+else if md2F and othOk and cBB > 0 and det2 > 0
+    b1 = f_kis((cOO * cBC - cBO * cOC) / det2, -3.0, 5.0)
+    b2 = f_kis((cBB * cOC - cBO * cBC) / det2, -2.0, 5.0)
+    fit   := b1 * rB + b2 * rO
+    // Gösterim: b1 + b2·β(OTHERS→BTC) = BTC'ye toplam duyarlılık; b2 = altcoin faktörü
+    beta  := b1 + b2 * (cBO / cBB)
+    beta2 := b2
+else
+    // OTHERS verisi gelmiyorsa (ya da ilk barlarda) BTC'ye düşülür
+    beta := not na(cBB) and cBB > 0 ? f_kis(cBC / cBB, -1.0, 4.0) : 1.0
+    fit  := beta * rB
 
 // ── Artık (piyasa çıkarılmış) ───────────────────────────────────────────────
-resid  = rc - beta * rm
+resid  = rc - fit
 sd     = ta.stdev(resid, lenB)
 
 // 🔴 YANKI DÜZELTMESİ: sert pencere (math.sum) coinin kendi sıçramasını tam lenA bar sonra
@@ -167,7 +239,7 @@ z      = sdCum > 0 ? cumRes / sdCum : 0.0
 // Gri çizgi ile osilatör TEK kaynaktan gelir (özdeşlik: close*exp(-cumRes))
 expPrice = close * math.exp(-cumRes)
 gapPct   = (math.exp(cumRes) - 1.0) * 100.0
-corr     = nz(ta.correlation(rc, rm, lenB), 0.0)
+corr     = nz(ta.correlation(rc, fit, lenB), 0.0)     // piyasanın coini ne kadar açıkladığı (r)
 
 // Göreli hacim: coinin kendi ortalamasına göre hacmi ÷ BTC'ninki (birimsiz)
 avC  = ta.sma(volume, lenB)
@@ -182,18 +254,38 @@ var int sure = 0
 sure := na(yon[1]) or yon != yon[1] ? 1 : sure + 1
 zMax = ta.highest(math.abs(z), lenB)
 
-// ── Rejim ───────────────────────────────────────────────────────────────────
-domOk   = useDom and not na(dom) and not na(dom[lenDom]) and dom[lenDom] != 0
-domChg  = domOk ? (dom / dom[lenDom] - 1.0) * 100.0 : float(na)
-riskOff = domOk and domChg >  domTh
-riskOn  = domOk and domChg < -domTh
-mktChg  = math.sum(rm, lenDom) * 100.0
+// ── Rejim (dominanslar = para akışı) ───────────────────────────────────────
+// Her dominansın son lenDom bardaki log değişimi KENDİ oynaklığına bölünür (σ);
+// böylece USDT.D'nin 0,1 puanlık hareketi ile BTC.D'nin 0,5 puanlığı kıyaslanabilir.
+f_dz(float _x) =>
+    float ch  = na(_x) or na(_x[lenDom]) or _x[lenDom] <= 0 ? float(na) : math.log(_x / _x[lenDom])
+    float sdv = ta.stdev(nz(ch), lenB)
+    na(ch) or na(sdv) or sdv <= 0 ? float(na) : ch / sdv
+
+f_domOy(float _z, float _yon) => na(_z) ? 0 : _z * _yon >= domTh ? 1 : _z * _yon <= -domTh ? -1 : 0
+
+zStb  = f_dz(dStb)
+zBtcD = f_dz(dBtcD)
+zOthD = f_dz(dOthD)
+zEthD = f_dz(dEthD)
+vStb  = rj_stb ? f_domOy(zStb,  -1.0) : 0     // stabil payı ▲ → para kenara     → −1
+vBtcD = rj_btc ? f_domOy(zBtcD, -1.0) : 0     // BTC.D ▲       → para BTC'ye     → −1
+vOthD = rj_oth ? f_domOy(zOthD,  1.0) : 0     // OTHERS.D ▲    → küçük altlar pay alıyor → +1
+vEthD = rj_eth ? f_domOy(zEthD,  1.0) : 0
+rjN    = (rj_stb ? 1 : 0) + (rj_btc ? 1 : 0) + (rj_oth ? 1 : 0) + (rj_eth ? 1 : 0)
+rjSum  = vStb + vBtcD + vOthD + vEthD
+rjNeed = math.max(1, int(math.ceil(rjN / 2.0)))          // çoğunluk: 3 oyda net +2
+domOk   = useDom and rjN > 0 and not (na(zStb) and na(zBtcD) and na(zOthD) and na(zEthD))
+riskOn  = domOk and rjSum >=  rjNeed
+riskOff = domOk and rjSum <= -rjNeed
+rmMkt   = mdEski ? rmLeg : rO                           // "piyasa yükseliyor mu?" için
+mktChg  = math.sum(rmMkt, lenDom) * 100.0
 celiski = riskOff and mktChg > 0
 
 zemTr  = 100 - zemSid
 regCol = zemSid == 0 ? color(na) : riskOff ? color.new(colOff, zemTr) : riskOn ? color.new(colOn, zemTr) : color(na)
-bgcolor(regCol, title="USDT.D rejimi")
-bgcolor(regCol, title="USDT.D rejimi (fiyat paneli)", force_overlay = true)
+bgcolor(regCol, title="Rejim zemini (dominanslar)")
+bgcolor(regCol, title="Rejim zemini (fiyat paneli)", force_overlay = true)
 
 // ── Fiyat paneli ────────────────────────────────────────────────────────────
 // NOT: fill() force_overlay DESTEKLEMİYOR (CE10120) → boşluk plotcandle gövdesiyle çiziliyor.
@@ -244,14 +336,16 @@ durCol = az < 1.0 ? colNe : z > 0 ? colUp : colDn
 betaS  = beta < 0.7 ? "düşük" : beta <= 1.3 ? "orta" : "yüksek"
 korS   = corr < 0.4 ? "zayıf" : corr < 0.7 ? "orta" : "güçlü"
 volS   = na(volX) ? "—" : volX < 0.7 ? "sönük" : volX < 2.0 ? "normal" : "canlı"
-rejS   = celiski ? "ÇELİŞKİ — ralli teyitsiz" : riskOff ? "risk-off (para kenara)" : riskOn ? "risk-on (para piyasada)" : "nötr"
+rejS   = not useDom ? "kapalı" : not domOk ? "veri yok" : celiski ? "ÇELİŞKİ — ralli teyitsiz" : riskOff ? "risk-off (altlardan çıkış)" : riskOn ? "risk-on (altlara giriş)" : "nötr"
 rejCol = celiski or riskOff ? colDn : riskOn ? colUp : colNe
 
 // (Eski DURUM / NE GÖRÜYORUM kutuları yerine bu metinler BİLGİ PANELİ'nde — BÖLÜM 31)
 // ── Alarmlar ────────────────────────────────────────────────────────────────
 alertcondition(xUp,     "Pozitif ayrışma", "Piyasadan POZİTİF ayrışma eşiği aşıldı")
 alertcondition(xDn,     "Negatif ayrışma", "Piyasadan NEGATİF ayrışma eşiği aşıldı")
-alertcondition(celiski, "Sağlıksız ralli", "Piyasa yukarı AMA USDT.D de yükseliyor — ralli teyitsiz")
+alertcondition(celiski, "Sağlıksız ralli", "Altcoin piyasası yukarı AMA dominanslar risk-off — ralli teyitsiz")
+alertcondition(riskOn  and not riskOn[1],  "Rejim risk-on'a döndü",  "{{ticker}}: dominanslar altcoin lehine döndü (risk-on)")
+alertcondition(riskOff and not riskOff[1], "Rejim risk-off'a döndü", "{{ticker}}: dominanslar altcoin aleyhine döndü (risk-off)")
 
 
 // ██████████ KISIM 2 — MSB-OB PAKETİ ██████████
@@ -1849,7 +1943,8 @@ alertcondition(dio_quiet, "DİO İlgisizlik", "İlgi, ilgisizlik bölgesine indi
 //   2) σ yapısı     : ayrışma osilatörünün son kırılım yönü      (zm_yapi)
 //   3) Ayrışma      : z ≥ +1σ → +1 · z ≤ −1σ → −1                 (göreli güç)
 //   4) Trend        : fiyat EMA üstünde + EMA yükseliyor → +1 (tersi −1)
-//   5) Rejim        : USDT.D düşüyor (risk-on) → +1 · yükseliyor / çelişki → −1
+//   5) Rejim        : dominans oyları (stabil ▼ · BTC.D ▼ · OTHERS.D ▲) çoğunlukla
+//                     altcoin lehine → +1 · aleyhine ya da çelişki → −1
 // Skor = oyların toplamı. Skor gereken teyit sayısını YUKARI keserse AL,
 // eksi tarafta AŞAĞI keserse SAT. Açık oyların hepsi aynı yöndeyse "GÜÇLÜ".
 // Her şey her barda hesaplanır (CW10002); yalnızca çizim anahtarlara bağlıdır.
@@ -1910,11 +2005,11 @@ sk_aciklama(bool al, float stp) =>
     if sig_cZM
         t += "\nσ yapısı: " + sk_oy(sk_zm)
     if sig_cZ
-        t += "\nAyrışma: " + sk_oy(sk_z) + " (" + fs(z) + "σ)"
+        t += "\nAyrışma (vs " + benchAd + "): " + sk_oy(sk_z) + " (" + fs(z) + "σ)"
     if sig_cTrd
         t += "\nTrend EMA" + str.tostring(sig_trLen) + ": " + sk_oy(sk_trd)
     if sig_cReg and useDom
-        t += "\nUSDT.D rejimi: " + sk_oy(sk_reg)
+        t += "\nDominans rejimi: " + sk_oy(sk_reg) + " (" + fsI(rjSum) + "/" + str.tostring(rjN) + ")"
     if dio_on
         t += "\nDİO: " + dio_durum + " (" + f2(dio_osc, "0.00") + ")"
     t += "\n────────────"
@@ -1986,9 +2081,9 @@ db_p  = db_pos == "Sağ üst"  ? position.top_right    : db_pos == "Sağ orta" ?
      db_pos == "Sol orta" ? position.middle_left  : db_pos == "Sol alt"  ? position.bottom_left  :
      db_pos == "Orta üst" ? position.top_center   : position.bottom_center
 
-var table dbT_P = table.new(db_p, 2, 24, bgcolor = color.new(chart.bg_color, 6), frame_color = color.new(chart.fg_color, 70),
+var table dbT_P = table.new(db_p, 2, 30, bgcolor = color.new(chart.bg_color, 6), frame_color = color.new(chart.fg_color, 70),
      frame_width = 1, border_color = color.new(chart.fg_color, 88), border_width = 1, force_overlay = true)
-var table dbT_Z = table.new(db_p, 2, 24, bgcolor = color.new(chart.bg_color, 6), frame_color = color.new(chart.fg_color, 70),
+var table dbT_Z = table.new(db_p, 2, 30, bgcolor = color.new(chart.bg_color, 6), frame_color = color.new(chart.fg_color, 70),
      frame_width = 1, border_color = color.new(chart.fg_color, 88), border_width = 1)
 
 db_satir(table t, int r, string k, string v, color vc, color bg) =>
@@ -2026,6 +2121,12 @@ f_tfAd() =>
          timeframe.isminutes ? (timeframe.multiplier % 60 == 0 ? str.tostring(int(timeframe.multiplier / 60)) + "S" : m + "dk") :
          timeframe.isdaily ? m + "G" : timeframe.isweekly ? m + "H" : timeframe.ismonthly ? m + "A" : timeframe.period
 
+// Dominans satırı: "7,21%  ▲ +1,3σ" (renk = verdiği oy)
+db_dom(float _d, float _z) =>
+    (na(_d) ? "—" : f2(_d, "0.00") + "%") + (na(_z) ? "" : "  " + (_z >= 0 ? "▲ " : "▼ ") + fs1(_z) + "σ")
+
+db_oyRenk(int _v) => _v > 0 ? colUp : _v < 0 ? colDn : colNe
+
 lux_icinde(float[] tops, float[] btms, int ext) =>
     bool ic = false
     int  n  = math.min(ext, array.size(tops))
@@ -2035,15 +2136,15 @@ lux_icinde(float[] tops, float[] btms, int ext) =>
     ic
 
 if barstate.islast
-    table.clear(dbT_P, 0, 0, 1, 23)
-    table.clear(dbT_Z, 0, 0, 1, 23)
+    table.clear(dbT_P, 0, 0, 1, 29)
+    table.clear(dbT_Z, 0, 0, 1, 29)
     if db_on
         t   = db_pane == "Fiyat paneli" ? dbT_P : dbT_Z
         det = db_mode == "Detaylı"
         int r = 0
 
         // ── Başlık ──
-        db_satir(t, r, "⚡ AYR · MSB-OB", syminfo.ticker + " · " + f_tfAd(), chart.fg_color, color.new(chart.fg_color, 86))
+        db_satir(t, r, "⚡ AYR · MSB-OB", syminfo.ticker + " · " + f_tfAd() + " · vs " + benchAd, chart.fg_color, color.new(chart.fg_color, 86))
         r += 1
 
         // ── Genel görünüm (birleşik skor) ──
@@ -2066,17 +2167,30 @@ if barstate.islast
         // ── Ayrışma ──
         db_satir(t, r, "Ayrışma (σ)", fs(z) + "σ · " + durum, durCol, color(na))
         r += 1
+        db_satir(t, r, "Rejim (para akışı)", rejS + (domOk ? "  " + fsI(rjSum) + "/" + str.tostring(rjN) : ""), rejCol, color(na))
+        r += 1
         if det
             db_satir(t, r, "Süre · pencere zirvesi", str.tostring(sure) + " bar " + (z >= 0 ? "▲" : "▼") + " · " + f2(zMax, "0.0") + "σ", colNe, color(na))
             r += 1
             db_satir(t, r, "Beklenen fiyat", str.tostring(expPrice, format.mintick) + " · boşluk " + fs1(gapPct) + "%", colNe, color(na))
             r += 1
-            db_satir(t, r, "β · korelasyon", f2(beta, "0.00") + " (" + betaS + ") · " + f2(corr, "0.00") + " (" + korS + ")", colNe, color(na))
+            betaTxt = not na(beta2) ? "BTC " + f2(beta, "0.00") + " · alt " + f2(beta2, "0.00") + " · r " + f2(corr, "0.00") + " (" + korS + ")" :
+                 f2(beta, "0.00") + " (" + betaS + ") · r " + f2(corr, "0.00") + " (" + korS + ")"
+            db_satir(t, r, "β · uyum (r)", betaTxt, colNe, color(na))
             r += 1
             db_satir(t, r, "Göreli hacim", na(volX) ? "—" : f2(volX, "0.00") + "× · " + volS, not na(volX) and volX >= 2.0 ? color.orange : colNe, color(na))
             r += 1
             if useDom
-                db_satir(t, r, "USDT.D rejimi", rejS + (domOk ? " (" + fs1(domChg) + "%)" : ""), rejCol, color(na))
+                if rj_stb
+                    db_satir(t, r, "  USDT+USDC.D", db_dom(dStb, zStb), db_oyRenk(vStb), color(na))
+                    r += 1
+                if rj_btc
+                    db_satir(t, r, "  BTC.D", db_dom(dBtcD, zBtcD), db_oyRenk(vBtcD), color(na))
+                    r += 1
+                if rj_oth
+                    db_satir(t, r, "  OTHERS.D", db_dom(dOthD, zOthD), db_oyRenk(vOthD), color(na))
+                    r += 1
+                db_satir(t, r, rj_eth ? "  ETH.D" : "  ETH.D (bilgi)", db_dom(dEthD, zEthD), rj_eth ? db_oyRenk(vEthD) : colNe, color(na))
                 r += 1
 
         // ── Yapı ──
@@ -2167,7 +2281,15 @@ if barstate.islast
 
         // ── Uyarılar ──
         if str.contains(symBtc, ":" + syminfo.ticker)
-            db_satir(t, r, "⚠ Uyarı", "Grafik BTC → σ, BTC'nin ETH'ye göre gücünü gösterir", color.orange, color(na))
+            db_satir(t, r, "⚠ Uyarı", mdEski ? "Grafik BTC → σ, BTC'nin ETH'ye göre gücünü gösterir" :
+                 mdOth ? "Grafik BTC → σ, BTC'nin altcoinlere göre gücünü gösterir" : "Grafik BTC → 2 faktörde ayrışma ≈ 0 (ölçütü OTHERS yapın)",
+                 color.orange, color(na))
+            r += 1
+        if not mdEski and not othOk
+            db_satir(t, r, "⚠ Uyarı", "OTHERS verisi gelmiyor → ölçüt geçici olarak yalnız BTC", color.orange, color(na))
+            r += 1
+        if useDom and not domOk
+            db_satir(t, r, "⚠ Uyarı", "Dominans verisi gelmiyor → rejim oy vermiyor", color.orange, color(na))
             r += 1
         if sk_n == 0
             db_satir(t, r, "⚠ Uyarı", "Hiç sinyal bileşeni açık değil", color.orange, color(na))
