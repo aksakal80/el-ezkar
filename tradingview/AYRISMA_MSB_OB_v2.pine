@@ -7,6 +7,8 @@
 //    durum × coin → 9 durum; altta uyum şeridi (BÖLÜM 32).
 //  • Para akışı: dominans PAYLARI (yüzde puan, ~24 saat). Karar OTHERS.D; nereye/nereden: stabil, ETH.D,
 //    BTC.D, diğer ilk-10. Derece = olağan değişime göre σ; dolar karşılığı. OTHERS ilk-10 sıçrama filtresi (✂).
+//  • DİO v3: coine özgü ilgi — dolar hacmi + OI + açıklanamayan hareket, piyasadan arındırılmış, sıralama
+//    tabanlı (+2,33σ ≈ en yüksek %1); PANİK · SHORT BASKISI · COŞKU · SHORT SIKIŞMASI etiketleri + karne (BÖLÜM 29).
 //  • Birleşik AL/SAT: 5 teyitten skor; etiket üzerinde gerekçe + stop + 1R/2R (BÖLÜM 30).
 //  • Sade görünüm anahtarı; pencereler zaman dilimine göre otomatik.
 //  Mimari: overlay=false; fiyat paneline giden çizimler force_overlay=true (fill() desteklemez — CE10120).
@@ -132,14 +134,14 @@ md2F    = not mdMaj and not mdOth
 benchAd = md2F ? "Piyasa+OTHERS" : mdOth ? "OTHERS" : "Piyasa"
 
 [btc, vBtc] = request.security(symBtc, timeframe.period, [close, volume], barmerge.gaps_off, barmerge.lookahead_off)
-eth         = request.security(symEth, timeframe.period, close,           barmerge.gaps_off, barmerge.lookahead_off)
+[eth, vEth] = request.security(symEth, timeframe.period, [close, volume], barmerge.gaps_off, barmerge.lookahead_off)
 oth         = request.security(symOth, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
-mj1 = request.security(symM1, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
-mj2 = request.security(symM2, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
-mj3 = request.security(symM3, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
-mj4 = request.security(symM4, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
-mj5 = request.security(symM5, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
-mj6 = request.security(symM6, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
+[mj1, mv1] = request.security(symM1, timeframe.period, [close, volume], barmerge.gaps_off, barmerge.lookahead_off)
+[mj2, mv2] = request.security(symM2, timeframe.period, [close, volume], barmerge.gaps_off, barmerge.lookahead_off)
+[mj3, mv3] = request.security(symM3, timeframe.period, [close, volume], barmerge.gaps_off, barmerge.lookahead_off)
+[mj4, mv4] = request.security(symM4, timeframe.period, [close, volume], barmerge.gaps_off, barmerge.lookahead_off)
+[mj5, mv5] = request.security(symM5, timeframe.period, [close, volume], barmerge.gaps_off, barmerge.lookahead_off)
+[mj6, mv6] = request.security(symM6, timeframe.period, [close, volume], barmerge.gaps_off, barmerge.lookahead_off)
 
 // Dominans payları yalnızca para akışı açıkken istenir
 dUsdt = useDom ? request.security(symDom,  timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off) : float(na)
@@ -1774,43 +1776,85 @@ if zm_on and zm_yapiDeg
 alertcondition(zm_yapiDeg,                     "Ayrışma yapı kırılımı",          "Ayrışma osilatöründe yapı kırılımı oluştu")
 alertcondition(zm_yapiDeg and zm_yapi ==  1,   "Ayrışma yapı kırılımı ▲",        "Ayrışma yukarı yönlü yapı kırdı — coin piyasaya karşı güçleniyor")
 alertcondition(zm_yapiDeg and zm_yapi == -1,   "Ayrışma yapı kırılımı ▼",        "Ayrışma aşağı yönlü yapı kırdı — coin piyasaya karşı zayıflıyor")
-// BÖLÜM 29: DİKKAT / İLGİ OSİLATÖRÜ (DİO) — AYRIŞMA PANELİNE BİNDİRİLMİŞ
+// BÖLÜM 29: DİKKAT / İLGİ OSİLATÖRÜ (DİO) v3 — COINE ÖZGÜ İLGİ
 //
-// Ayrı panel AÇMAZ. Çizgi, AYRIŞMA (σ) paneline biner (ikisi de z-skor).
-// Mum rengi · PANİK/COŞKU etiketleri · tablo → force_overlay ile fiyat paneline.
-// Tüm isimler dio_ ön eklidir; diğer bölümlerle çakışmaz.
+// Soru: "Bu coine, piyasanın genel hareketinden BAĞIMSIZ, olağan dışı bir ilgi var mı?"
+// Her bileşen SIRALAMA tabanlı normal skordur: bu bar son N barın yüzde kaçından yüksek → σ ölçeği.
+// (Ortalama/sapmanın aksine tek bir aşırı bar ölçeği şişirip sonraki patlamaları bastırmaz;
+//  eşik her coinde ve zaman diliminde aynı anlama gelir: +2,33σ ≈ penceredeki en yüksek %1.)
+//   1) Dolar hacmi (hacim × fiyat) − piyasanın (BTC + ETH + majörler) aynı anki hacim ilgisi
+//   2) OI değişiminin büyüklüğü − BTC'nin OI değişimi                    (OI verisi varsa)
+//   3) Fiyat hareketi: ayrışma modelinin (piyasa + OTHERS) açıklayamadığı getirinin büyüklüğü
+//   (1) ve (2)'de piyasa kısmı kayan regresyonla çıkarılır (β ≥ 0, ayrışmadaki gibi).
+// Ağırlıklı ortalama → EMA → son N bara göre yeniden sıralama = DİO.
+// Aşırı ilgi anında son dio_dir barda coin (piyasaya göre) ↓/↑ × OI ↓/↑ → etiket:
+//   ↓ OI↓ PANİK (long tasfiyesi) · ↓ OI↑ SHORT BASKISI · ↑ OI↑ COŞKU (yeni long) · ↑ OI↓ SHORT SIKIŞMASI
+// Karne: her etiketten sonraki lenA barda coinin getirisi ve piyasaya göre getirisi (bu grafiğin geçmişi).
+// Ölçüm (40 OTHERS coini, 1 saat, ~40 gün): eski sürümde aşırı ilgi sinyallerinin %46'sı coinlerin en az
+// dörtte birinin aynı anda aşırı ilgide olduğu (piyasa geneli) anlara denk geliyordu; bu sürümde %7.
+// Tüm isimler dio_ ön eklidir; diğer bölümlerle çakışmaz. Etiketler label.new → 64 çizim sınırına sayılmaz.
 grpDIO = "🔥👀🔥👀🔥 DİO · DİKKAT / İLGİ 🔥👀🔥👀🔥"
-dio_on    = input.bool(true, "DİO modülünü aç", group = grpDIO)
+dio_on    = input.bool(true, "DİO modülünü aç", group = grpDIO,
+     tooltip = "Coine, piyasanın genel hareketinden bağımsız, olağan dışı bir ilgi var mı? Dolar hacmi, açık pozisyon (OI) değişimi ve açıklanamayan fiyat hareketinden ölçülür. Çizgi ayrışma paneline biner (ikisi de σ ölçeğinde).")
 dio_mod   = input.string("Ayrışma paneline bindir", "Gösterim",
      options = ["Ayrışma paneline bindir", "Sadece fiyat panelinde (mum rengi + etiket)"], group = grpDIO,
      tooltip = "İkinci seçenekte alt panele hiçbir şey çizilmez; DİO yalnızca mum rengi ve etiketlerle görünür.")
 dio_olcek = input.float(1.0, "Panel ölçeği (çarpan)", minval = 0.1, maxval = 5.0, step = 0.1, group = grpDIO,
-     tooltip = "DİO çizgisi ayrışma çizgisini ezerse küçült (ör. 0.6). Sadece görünümü değiştirir, sinyaller etkilenmez.")
+     tooltip = "DİO çizgisi ayrışma çizgisini ezerse küçült (ör. 0.7). Sadece görünümü değiştirir, sinyaller etkilenmez.")
 dio_kal   = input.int(1, "Çizgi kalınlığı", minval = 1, maxval = 4, group = grpDIO)
 dio_seviye= input.bool(true, "Aşırı ilgi / ilgisizlik çizgileri", group = grpDIO)
 dio_bars  = input.bool(true, "Mumları renklendir",       group = grpDIO)
-dio_tags  = input.bool(true, "PANİK / COŞKU etiketleri", group = grpDIO)
+dio_tags  = input.bool(true, "Aşırı ilgi etiketleri", group = grpDIO,
+     tooltip = "Aşırı ilgi anında son 'yön penceresi' kadar barda coin (piyasaya göre) düştü mü, OI arttı mı?\n↓ + OI ↓ → PANİK (long pozisyonlar tasfiye ediliyor)\n↓ + OI ↑ → SHORT BASKISI (yeni short açılıyor)\n↑ + OI ↑ → COŞKU (yeni kaldıraçlı long)\n↑ + OI ↓ → SHORT SIKIŞMASI (short'lar kapanıyor)\nOI verisi yoksa yalnız PANİK / COŞKU. Etiketin üzerine gelince bileşenler ve bu grafikteki geçmiş sonuçlar (karne) görünür.")
+dio_keep  = input.int(40, "Ekranda tutulacak etiket", minval = 5, maxval = 200, group = grpDIO)
 
 grpDIOB = "🧮🔥🧮🔥🧮 DİO · BİLEŞENLER 🧮🔥🧮🔥🧮"
-dio_wVol  = input.float(1.0, "Hacim ağırlığı",         minval = 0, step = 0.1, group = grpDIOB)
-dio_wRng  = input.float(0.7, "Oynaklık (TR) ağırlığı", minval = 0, step = 0.1, group = grpDIOB)
-dio_wRet  = input.float(0.7, "Mutlak getiri ağırlığı", minval = 0, step = 0.1, group = grpDIOB)
+dio_goreli = input.bool(true, "Piyasadan arındır: coine özgü ilgi (önerilen)", group = grpDIOB,
+     tooltip = "Açıkken piyasa genelinin (BTC + ETH + majörler) hacim ilgisi ve BTC'nin OI değişimi çıkarılır; fiyat hareketi olarak ayrışma modelinin açıklayamadığı getiri kullanılır. Böylece piyasa sert düştüğünde bütün coinlerde birden PANİK çıkmaz, günün saati etkisi de büyük ölçüde kalkar. Kapalıyken ham dolar hacmi, ham OI değişimi ve mum boyu kullanılır.")
+dio_wVol  = input.float(1.0, "Dolar hacmi ağırlığı", minval = 0, step = 0.1, group = grpDIOB,
+     tooltip = "Hacim × fiyat. Adet hacmi, fiyatı çok değişen coinde ilgiyi yanlış gösterir: fiyat 3 katına çıkınca aynı dolar ilgisi 3 kat daha az adet eder.")
 dio_useOI = input.bool(true, "Açık pozisyon (OI) kullan", group = grpDIOB,
-     tooltip = "Binance .P gibi OI verisi olan vadeli sembollerde çalışır. Veri yoksa otomatik devre dışı kalır.")
-dio_wOI   = input.float(0.8, "OI değişim ağırlığı",    minval = 0, step = 0.1, group = grpDIOB)
-dio_base  = input.int(100, "Bileşen z-skor penceresi", minval = 20, group = grpDIOB)
-dio_smt   = input.int(3,   "Yumuşatma (EMA)",          minval = 1,  group = grpDIOB)
-dio_norm  = input.int(200, "Son z-skor penceresi",     minval = 50, group = grpDIOB)
-dio_upper = input.float(3.0,  "Aşırı ilgi seviyesi", step = 0.1, group = grpDIOB)
-dio_lower = input.float(-1.5, "İlgisizlik seviyesi", step = 0.1, group = grpDIOB)
+     tooltip = "Binance .P gibi OI verisi olan vadeli sembollerde çalışır. Veri yoksa ya da pencere kadar geçmişi yoksa kendiliğinden devre dışı kalır.")
+dio_wOI   = input.float(0.7, "OI değişim ağırlığı", minval = 0, step = 0.1, group = grpDIOB)
+dio_wRng  = input.float(0.5, "Fiyat hareketi ağırlığı", minval = 0, step = 0.1, group = grpDIOB,
+     tooltip = "Arındırma açıkken: ayrışma modelinin (piyasa + OTHERS) açıklayamadığı getirinin büyüklüğü. Kapalıyken: mum boyu (TR ÷ fiyat). Fiyat hareketi ilginin sonucudur; bu yüzden tek bileşen olarak ve düşük ağırlıkla girer.")
+dio_pOto  = input.bool(true, "Pencereyi zaman dilimine göre seç (önerilen)", group = grpDIOB,
+     tooltip = "Açıkken ayrışmanın β penceresi kullanılır: 1 saatte 168 bar (1 hafta), 4 saatte 120 (20 gün), 1 günde 100. DİO pencerenin ~3 katı bar sonra çizilmeye başlar (ısınma).")
+dio_base  = input.int(168, "Pencere (bar, otomatik kapalıyken)", minval = 30, maxval = 1000, group = grpDIOB)
+dio_smt   = input.int(2, "Yumuşatma (EMA)", minval = 1, group = grpDIOB)
+dio_upper = input.float(2.33, "Aşırı ilgi seviyesi (σ)", step = 0.05, group = grpDIOB,
+     tooltip = "Sıralama tabanlıdır: 2,33 ≈ penceredeki en yüksek %1 · 2,05 ≈ %2 · 1,64 ≈ %5. Ulaşılabilecek en yüksek değer pencereye bağlıdır (168 barda ≈ 2,75 · 100 barda ≈ 2,58).")
+dio_lower = input.float(-1.28, "İlgisizlik seviyesi (σ)", step = 0.05, group = grpDIOB,
+     tooltip = "−1,28 ≈ penceredeki en düşük %10.")
 dio_dir   = input.int(10, "Yön penceresi (bar)", minval = 1, group = grpDIOB,
-     tooltip = "Patlama anında fiyat bu kadar bar öncesine göre düşmüşse PANİK, yükselmişse COŞKU.")
+     tooltip = "Aşırı ilgi anında son kaç bara bakılır: coin (arındırma açıkken piyasaya göre) düştü mü yükseldi mi, OI arttı mı azaldı mı.")
 
 // ── Yardımcılar
-dio_fz(float x, int len) =>
-    float m = ta.sma(x, len)
-    float s = ta.stdev(x, len)
-    s > 0 ? (x - m) / s : 0.0
+dio_N = dio_pOto ? lenB : dio_base
+
+// Standart normal dağılımın ters fonksiyonu (Abramowitz–Stegun 26.2.23, hata < 0,0005)
+f_invN(float _p) =>
+    float q  = math.max(1e-6, math.min(1.0 - 1e-6, _p))
+    float pp = q < 0.5 ? q : 1.0 - q
+    float t  = math.sqrt(-2.0 * math.log(pp))
+    float x  = t - (2.515517 + 0.802853 * t + 0.010328 * t * t) / (1.0 + 1.432788 * t + 0.189269 * t * t + 0.001308 * t * t * t)
+    q < 0.5 ? -x : x
+
+// Sıralama tabanlı normal skor: önceki _n değerin kaçı ≤ bu değer → σ ölçeği (ısınmada 0)
+f_ns(float _x, int _n) =>
+    float pr = ta.percentrank(_x, _n)
+    na(_x) or na(pr) ? 0.0 : f_invN((pr / 100.0 * _n + 0.5) / (_n + 1))
+
+// _y'nin _x'in açıklamadığı kısmı (kayan regresyon, β 0…3), kendi oynaklığına bölünmüş
+f_art(float _y, float _x, int _n) =>
+    float vx  = f_cov(_x, _x, _n)
+    float cxy = f_cov(_x, _y, _n)
+    float vy  = f_cov(_y, _y, _n)
+    float my  = ta.sma(_y, _n)
+    float mx  = ta.sma(_x, _n)
+    float b   = not na(vx) and vx > 0 ? f_kis(cxy / vx, 0.0, 3.0) : 0.0
+    float sdR = math.sqrt(math.max(nz(vy) - 2.0 * b * nz(cxy) + b * b * nz(vx), 0.05 * nz(vy), 1e-9))
+    na(my) or na(mx) ? 0.0 : (_y - my - b * (_x - mx)) / sdR
 
 dio_cMor  = color.rgb(110, 60, 170)
 dio_cMavi = color.rgb(40, 110, 230)
@@ -1823,48 +1867,123 @@ dio_col(float v) =>
      color.from_gradient(v, dio_upper / 2, dio_upper, dio_cYes, dio_cSari)
 
 // ── Bileşenler (her barda hesaplanır — koşul içine alınmaz, CW10002)
+// 1) Dolar hacmi: coin ve piyasa (BTC, ETH, majör sepeti; ⅓'er)
 dio_volOk = not na(volume)
-dio_volZ  = dio_fz(math.log(nz(volume) + 1), dio_base)
-dio_rngZ  = dio_fz(ta.tr(true) / close, dio_base)
-dio_retZ  = dio_fz(math.abs(math.log(close / nz(close[1], close))), dio_base)
+dio_qMj   = nz(mv1 * mj1) + nz(mv2 * mj2) + nz(mv3 * mj3) + nz(mv4 * mj4) + nz(mv5 * mj5) + nz(mv6 * mj6)
+dio_sV    = f_ns(nz(volume) * close, dio_N)
+dio_sVB   = f_ns(nz(vBtc) * nz(btc), dio_N)
+dio_sVE   = f_ns(nz(vEth) * nz(eth), dio_N)
+dio_sVM   = f_ns(dio_qMj, dio_N)
+dio_sMk   = (dio_sVB + dio_sVE + dio_sVM) / 3.0
+dio_rV    = f_art(dio_sV, dio_sMk, dio_N)
 
+// 2) Açık pozisyon değişimi (coin ve BTC)
 dio_oiTk  = syminfo.prefix + ":" + syminfo.ticker + "_OI"
-dio_oi    = request.security(dio_oiTk, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off, ignore_invalid_symbol = true)
-dio_oiChg = na(dio_oi) or na(dio_oi[1]) or dio_oi[1] == 0 ? float(na) : math.abs(dio_oi / dio_oi[1] - 1)
-dio_oiOk  = dio_useOI and not na(dio_oiChg)
-dio_oiZ   = dio_fz(nz(dio_oiChg), dio_base)
+dio_oi    = request.security(dio_oiTk,        timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off, ignore_invalid_symbol = true)
+dio_oiB   = request.security(symBtc + "_OI",  timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off, ignore_invalid_symbol = true)
+f_oiDeg(float _oi) => na(_oi) or na(_oi[1]) or _oi[1] == 0 ? float(na) : math.abs(_oi / _oi[1] - 1.0)
+dio_oiC   = f_oiDeg(dio_oi)
+dio_oiBC  = f_oiDeg(dio_oiB)
+dio_oiGec = math.sum(na(dio_oiC)  ? 0 : 1, dio_N)          // penceredeki geçerli OI barı
+dio_oiBGc = math.sum(na(dio_oiBC) ? 0 : 1, dio_N)
+dio_oiOk  = dio_useOI and not na(dio_oiC) and dio_oiGec >= 0.9 * dio_N
+dio_oiBOk = not na(dio_oiBC) and dio_oiBGc >= 0.9 * dio_N
+dio_sO    = f_ns(nz(dio_oiC), dio_N)
+dio_sOB   = f_ns(nz(dio_oiBC), dio_N)
+dio_rO    = f_art(dio_sO, dio_sOB, dio_N)
 
-dio_wSum = (dio_volOk ? dio_wVol : 0) + dio_wRng + dio_wRet + (dio_oiOk ? dio_wOI : 0)
-dio_raw  = dio_wSum > 0 ? ((dio_volOk ? dio_wVol * dio_volZ : 0) + dio_wRng * dio_rngZ + dio_wRet * dio_retZ + (dio_oiOk ? dio_wOI * dio_oiZ : 0)) / dio_wSum : 0.0
-dio_osc  = dio_fz(ta.ema(dio_raw, dio_smt), dio_norm)
+// 3) Fiyat hareketi: açıklanamayan getiri (arındırılmış) ya da mum boyu (ham)
+dio_sRes  = f_ns(math.abs(resid), dio_N)
+dio_sTR   = f_ns(ta.tr(true) / close, dio_N)
 
-// ── Sinyaller
-dio_chg   = (close - close[dio_dir]) / close[dio_dir]
-dio_spike = ta.crossover(dio_osc, dio_upper)
-dio_panic = dio_on and dio_spike and dio_chg < 0
-dio_euph  = dio_on and dio_spike and dio_chg >= 0
-dio_xAlt  = ta.crossunder(dio_osc, dio_lower)     // her barda hesaplanır (CW10002)
-dio_quiet = dio_on and dio_xAlt
+// ── Birleşik DİO
+dio_cV   = dio_goreli ? dio_rV : dio_sV
+dio_cO   = dio_goreli and dio_oiBOk ? dio_rO : dio_sO
+dio_cM   = dio_goreli ? dio_sRes : dio_sTR
+dio_wS   = (dio_volOk ? dio_wVol : 0.0) + dio_wRng + (dio_oiOk ? dio_wOI : 0.0)
+dio_raw  = dio_wS > 0 ? ((dio_volOk ? dio_wVol * dio_cV : 0.0) + dio_wRng * dio_cM + (dio_oiOk ? dio_wOI * dio_cO : 0.0)) / dio_wS : 0.0
+dio_osc  = f_ns(ta.ema(dio_raw, dio_smt), dio_N)
+dio_isin = bar_index > 3 * dio_N + lenA                      // ısınma bitti mi
+
+// ── Yön (son dio_dir bar): coin (arındırılmışsa piyasaya göre) × OI
+dio_fRel = math.sum(resid, dio_dir)
+dio_fAbs = math.log(close / close[dio_dir])
+dio_fY   = dio_goreli ? dio_fRel : dio_fAbs
+dio_oiY  = na(dio_oi) or na(dio_oi[dio_dir]) or dio_oi[dio_dir] == 0 ? float(na) : dio_oi / dio_oi[dio_dir] - 1.0
+dio_oiV  = dio_oiOk and not na(dio_oiY)
+dio_tip  = not dio_oiV ? (dio_fY < 0 ? 1 : 3) : dio_fY < 0 ? (dio_oiY < 0 ? 1 : 2) : (dio_oiY >= 0 ? 3 : 4)
+
+f_dioAd(int _t) => _t == 1 ? "PANİK" : _t == 2 ? "SHORT BASKISI" : _t == 3 ? "COŞKU" : "SHORT SIKIŞMASI"
+f_dioRenk(int _t) => _t == 1 ? #d50000 : _t == 2 ? #8e24aa : _t == 3 ? #ff9800 : #00acc1
+f_dioAcik(int _t, bool _oi) =>
+    _t == 1 ? (_oi ? "fiyat ↓ + OI ↓: long pozisyonlar tasfiye ediliyor (kapitülasyon) — olası dip" : "ilgi patlaması + düşüş: olası panik / kapitülasyon") :
+     _t == 2 ? "fiyat ↓ + OI ↑: yeni short açılıyor — düşüş baskısı sürebilir" :
+     _t == 3 ? (_oi ? "fiyat ↑ + OI ↑: yeni kaldıraçlı long — coşku, kaldıraç birikiyor" : "ilgi patlaması + yükseliş: coşku") :
+     "fiyat ↑ + OI ↓: short'lar kapanıyor (sıkışma) — hareket kısa sürebilir"
+
+// ── Sinyaller (kesişmeler her barda hesaplanır — CW10002)
+dio_xUst  = ta.crossover(dio_osc, dio_upper)
+dio_xAlt  = ta.crossunder(dio_osc, dio_lower)
+dio_spike = dio_on and dio_isin and dio_xUst
+dio_panic = dio_spike and dio_tip <= 2
+dio_euph  = dio_spike and dio_tip >= 3
+dio_quiet = dio_on and dio_isin and dio_xAlt
+
+// ── DİO karnesi: etiketten sonraki lenA bar (bu grafiğin geçmişi) · 0 = tüm barlar (taban) · 1–4 = etiket türü
+var float[] dk_top = array.new_float(5, 0.0)
+var float[] dk_rel = array.new_float(5, 0.0)
+var int[]   dk_n   = array.new_int(5, 0)
+var int[]   dk_poz = array.new_int(5, 0)
+dk_g = (close / close[lenA] - 1.0) * 100.0
+dk_r = (math.exp(math.sum(resid, lenA)) - 1.0) * 100.0      // piyasaya (ölçüte) göre
+if dio_isin[lenA] and not na(dk_g)
+    int[] dk_k = dio_spike[lenA] ? array.from(0, dio_tip[lenA]) : array.from(0)
+    for k in dk_k
+        array.set(dk_top, k, array.get(dk_top, k) + dk_g)
+        array.set(dk_rel, k, array.get(dk_rel, k) + dk_r)
+        array.set(dk_n,   k, array.get(dk_n, k) + 1)
+        if dk_g > 0
+            array.set(dk_poz, k, array.get(dk_poz, k) + 1)
+f_dkSatir(int _k) =>
+    int n = array.get(dk_n, _k)
+    n < 8 ? "yetersiz örnek (n=" + str.tostring(n) + ")" :
+         "fiyat ort. " + fs1(array.get(dk_top, _k) / n) + "% · piyasaya göre " + fs1(array.get(dk_rel, _k) / n) + "% · %" +
+         str.tostring(math.round(100.0 * array.get(dk_poz, _k) / n)) + " pozitif · n=" + str.tostring(n)
 
 // ── Alt panel: AYRIŞMA paneline bindirme (yeni panel YOK)
 dio_pane = dio_on and dio_mod == "Ayrışma paneline bindir" and not sade
-plot(dio_pane ? dio_osc * dio_olcek : na, "DİO",
+plot(dio_pane and dio_isin ? dio_osc * dio_olcek : na, "DİO",
      color = dio_osc >= dio_upper ? color.rgb(80, 210, 255) : color.new(color.rgb(40, 120, 235), 20), linewidth = dio_kal)
 // v2: plot() yerine hline() — hline 64'lük plot sınırına sayılmaz
 hline(dio_upper * dio_olcek, "DİO aşırı ilgi", color = dio_pane and dio_seviye ? #ff98008c : #00000000, linestyle = hline.style_dotted, linewidth = 1)
 hline(dio_lower * dio_olcek, "DİO ilgisizlik", color = dio_pane and dio_seviye ? #ffc8788c : #00000000, linestyle = hline.style_dotted, linewidth = 1)
 
-// ── Fiyat paneli: etiketler (mum rengi BÖLÜM 30'da — skor seçeneğiyle birlikte) ──
-plotshape(dio_tags and dio_panic, "DİO PANİK", shape.labelup,   location.belowbar, color.red,    text = "PANİK", textcolor = color.white, size = size.tiny, force_overlay = true)
-plotshape(dio_tags and dio_euph,  "DİO COŞKU", shape.labeldown, location.abovebar, color.orange, text = "COŞKU", textcolor = color.black, size = size.tiny, force_overlay = true)
+// ── Fiyat paneli: etiketler (label → çizim sınırına sayılmaz; mum rengi BÖLÜM 30'da)
+var label[] dio_lbl = array.new<label>()
+if dio_tags and dio_spike and barstate.isconfirmed
+    int  dt = dio_tip
+    bool dn = dt <= 2
+    string tt = "DİO " + fs(dio_osc) + "σ (aşırı ilgi ≥ " + f2(dio_upper, "0.00") + "σ · pencere " + str.tostring(dio_N) + " bar)" +
+         "\nDolar hacmi" + (dio_goreli ? " (piyasadan arındırılmış)" : "") + ": " + fs(dio_cV) + "σ" +
+         "\nOI değişimi: " + (dio_oiOk ? fs(dio_cO) + "σ · son " + str.tostring(dio_dir) + " bar OI " + fs1(nz(dio_oiY) * 100.0) + "%" : "veri yok") +
+         "\nFiyat hareketi" + (dio_goreli ? " (açıklanamayan)" : " (mum boyu)") + ": " + fs(dio_cM) + "σ · son " + str.tostring(dio_dir) +
+         " bar coin " + (dio_goreli ? "piyasaya göre " : "") + fs1((math.exp(dio_fY) - 1.0) * 100.0) + "%" +
+         "\n→ " + f_dioAcik(dt, dio_oiV) +
+         "\nBu grafikte " + f_dioAd(dt) + " sonrası " + str.tostring(lenA) + " bar: " + f_dkSatir(dt) +
+         "\nTüm barlar (taban): " + f_dkSatir(0)
+    array.push(dio_lbl, label.new(bar_index, dn ? low : high, f_dioAd(dt), yloc = dn ? yloc.belowbar : yloc.abovebar,
+         style = dn ? label.style_label_up : label.style_label_down, color = f_dioRenk(dt),
+         textcolor = dt >= 3 ? color.black : color.white, size = size.tiny, tooltip = tt, force_overlay = true))
+    if array.size(dio_lbl) > dio_keep
+        label.delete(array.shift(dio_lbl))
 
-// DİO durumu (sinyal açıklaması kullanır)
-dio_durum = dio_osc >= dio_upper ? (dio_chg < 0 ? "PANİK" : "COŞKU") : dio_osc <= dio_lower ? "İlgisiz" : "Normal"
+// DİO durumu (sinyal açıklaması ve uyum satırı kullanır)
+dio_durum = not dio_isin ? "ısınıyor" : dio_osc >= dio_upper ? f_dioAd(dio_tip) : dio_osc <= dio_lower ? "İlgisiz" : "Normal"
 
 // ── Alarmlar
-alertcondition(dio_panic, "DİO Panik",      "Dikkat patlaması + düşüş: olası kapitülasyon")
-alertcondition(dio_euph,  "DİO Coşku",      "Dikkat patlaması + yükseliş: olası coşku / yorgunluk")
-alertcondition(dio_quiet, "DİO İlgisizlik", "İlgi, ilgisizlik bölgesine indi")
+alertcondition(dio_panic, "DİO Panik",      "Coine özgü ilgi patlaması + düşüş: panik (long tasfiyesi) ya da short baskısı")
+alertcondition(dio_euph,  "DİO Coşku",      "Coine özgü ilgi patlaması + yükseliş: coşku (yeni long) ya da short sıkışması")
+alertcondition(dio_quiet, "DİO İlgisizlik", "Coine ilgi, ilgisizlik bölgesine indi")
 
 // BÖLÜM 30: ⚡ BİRLEŞİK SİNYAL MOTORU
 //
@@ -1981,7 +2100,7 @@ if sigSell
 // NOT (plot sınırı 64): alertcondition 1, her plot/bgcolor/barcolor 1, rengi HESAPLANAN
 //     (color.new dahil) her renk argümanı +1 sayılır. Bu yüzden burada sabit renkler var.
 plot(sig_trShow ? trEma : na, "Trend EMA", color = #ffb300, linewidth = 2, force_overlay = true)
-barcolor(sig_bars ? (sk == 0 ? color(na) : sk_col) : dio_on and dio_bars ? dio_col(dio_osc) : na, title = "Mum rengi (DİO / skor)")
+barcolor(sig_bars ? (sk == 0 ? color(na) : sk_col) : dio_on and dio_bars and dio_isin ? dio_col(dio_osc) : na, title = "Mum rengi (DİO / skor)")
 
 // ── Alarmlar
 alertcondition(sigBuy,            "⚡ Birleşik AL",                  "{{ticker}} ({{interval}}) — Birleşik AL sinyali @ {{close}}")
@@ -2134,6 +2253,10 @@ if barstate.islast
              (uy_krn ? "\n── Karne (durum başladıktan sonraki " + str.tostring(lenA) + " bar) ──" +
              "\nEN GÜÇLÜ: " + f_kSatir(0) + "\nLehte: " + f_kSatir(1) + "\nUYUMSUZ: " + f_kSatir(2) +
              "\nNötr: " + f_kSatir(3) + "\nAleyhte: " + f_kSatir(4) + "\nEN ZAYIF: " + f_kSatir(5) +
-             "\nTüm barlar: " + (kr_hN > 0 ? "ort. " + fs1(kr_hT / kr_hN) + "%" : "—") : "")
+             "\nTüm barlar: " + (kr_hN > 0 ? "ort. " + fs1(kr_hT / kr_hN) + "%" : "—") : "") +
+             (dio_on ? "\n── DİO (coine özgü ilgi): " + dio_durum + " · " + fs(dio_osc) + "σ ──" +
+             "\nEtiketten sonraki " + str.tostring(lenA) + " bar (bu grafik):" +
+             "\nPANİK: " + f_dkSatir(1) + "\nSHORT BASKISI: " + f_dkSatir(2) + "\nCOŞKU: " + f_dkSatir(3) +
+             "\nSHORT SIKIŞMASI: " + f_dkSatir(4) + "\nTüm barlar: " + f_dkSatir(0) : "")
         table.cell(uyT, 0, 0, uyTxt, text_color = uy_col, text_size = uy_sz, text_halign = text.align_left,
              bgcolor = color.new(uy_col, uy_ton == 0 ? 92 : 84), tooltip = uyTip)
