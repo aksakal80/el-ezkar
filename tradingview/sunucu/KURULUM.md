@@ -2,7 +2,7 @@
 
 TradingView'daki **AYRIŞMA + MSB-OB** göstergesinin piyasa uyumu kısmının sunucu
 karşılığıdır. Aynı formüllerle çalışır. OTHERS evrenindeki bütün coinleri (ilk 10 ve
-hisse/emtia perp'leri hariç) 1 saat ve 4 saatte tarar. Her coin için şu soruya cevap
+hisse/emtia perp'leri hariç) 1 saat, 4 saat ve 1 günde tarar. Her coin için şu soruya cevap
 verir: **"Coinin fiyatı, piyasanın (BTC + ETH + majörler) ve paranın altlara akıp akmadığının
 (OTHERS.D payı) durumuyla uyumlu mu?"**
 
@@ -47,7 +47,7 @@ scp -P <PORT> -i <ANAHTAR> ayrisma_export.service ayrisma_export.timer root@<SUN
 Sonra sunucuda:
 
 ```bash
-# 1) Önce elle bir kez çalıştırın (1–3 dk sürer, ilerlemeyi ekrana yazar)
+# 1) Önce elle bir kez çalıştırın (2–5 dk sürer, ilerlemeyi ekrana yazar)
 /root/venv/bin/python3 /root/projelerim/ayrisma_export.py
 
 # 2) Çıktı oluştu mu?
@@ -97,7 +97,7 @@ journalctl -u ayrisma_export.service -n 50 --no-pager
 ```
 
 Her çalışma şöyle bir satırla biter:
-`[OK] /var/www/veri/ayrisma.json yazıldı · 75.2 sn · rejim: …`
+`[OK] /var/www/veri/ayrisma.json yazıldı · 180.4 sn · akış: … · OTHERS.D +0.12 puan`
 
 Hata olursa eski `ayrisma.json` bozulmadan kalır ve panel son iyi veriyi göstermeye devam eder.
 
@@ -118,7 +118,9 @@ Formül sabitleri dosyanın başındadır (`TF`, `UYUM_BANT`, `PIYASA_ESIK`, `AK
 `HARIC`). Değerleri göstergenin varsayılan ayarlarıyla aynıdır:
 - **Piyasa:** BTC, ETH ve majörler, her biri ⅓ ağırlıkla. Majörler, BTC ve ETH hariç ilk 10'daki
   stabil olmayan coinlerdir (XRP, BNB, SOL, DOGE, TRX, ADA) ve kendi içinde eşit ağırlıklıdır.
-- **Pencereler:** 1 saatte β 168 / ayrışma 24 bar, 4 saatte β 120 / ayrışma 30 bar.
+- **Pencereler:** 1 saatte β 168 / ayrışma 24 bar, 4 saatte β 120 / ayrışma 30 bar, 1 günde
+  β 100 / ayrışma 14 bar. Günlükte bir coinin taranması için en az ~150 günlük (≈5 ay) geçmiş
+  gerekir; daha yeni coinler "kısa geçmiş" sayılır.
 - **Eşikler:** uyum bandı ±1σ, piyasa yön eşiği ±0,5σ, akış eşiği ±1σ (OTHERS.D, 24 saat).
 
 İlk 10 sıralaması değişirse `MAJORLER` ve `HARIC` listelerini güncelleyin.

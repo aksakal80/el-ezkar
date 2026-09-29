@@ -1,6 +1,6 @@
 Sunucuya **"Ayrışma · Piyasa Uyumu" paneli** modülünü kuracağız ya da güncelleyeceğiz. Bu,
-TradingView'daki AYRIŞMA + MSB-OB göstergesinin sunucu karşılığı. OTHERS coinlerini 1 saat ve
-4 saatte tarar ve şu soruyu cevaplar: "coinin fiyatı piyasanın (BTC + ETH + majörler) ve para
+TradingView'daki AYRIŞMA + MSB-OB göstergesinin sunucu karşılığı. OTHERS coinlerini 1 saat,
+4 saat ve 1 günde tarar ve şu soruyu cevaplar: "coinin fiyatı piyasanın (BTC + ETH + majörler) ve para
 akışının (OTHERS.D payı) durumuyla uyumlu mu?". Sonucu `/var/www/veri/ayrisma.json` dosyasına
 yazar; `ayrisma_panel.html` bu dosyayı gösterir.
 
@@ -87,10 +87,10 @@ cp -a /root/projelerim/ayrisma_dom_gecmis.json $Y/ 2>/dev/null || true
 systemctl daemon-reload
 cd /root/projelerim && /root/venv/bin/python3 ayrisma_export.py
 ```
-- 1–3 dakika sürer ve `[OK] /var/www/veri/ayrisma.json yazıldı` satırıyla bitmeli.
+- 2–5 dakika sürer ve `[OK] /var/www/veri/ayrisma.json yazıldı` satırıyla bitmeli.
   Çıktının tamamını bana göster.
 - JSON'u kontrol et:
-  - `tf` altında `1h` ve `4h` olmalı.
+  - `tf` altında `1h`, `4h` ve `1d` olmalı.
   - Her birinde kaç coin var, `atlanan` sayıları kaç?
   - `rejim` altındaki şu alanları bana göster: `durum`, `akis`, `oth`, `kalemler`, `nereye`,
     `kaynak`, `usdc`.
@@ -124,7 +124,8 @@ Onaylarsam:
 - Yeni kurulum mu, güncelleme mi yapıldı; güncellemeyse yedeğin yeri.
 - Hangi dosya nereye kondu.
 - İlk çalışmanın süresi.
-- 1h ve 4h'de hesaplanan coin sayısı; hata ve kısa geçmiş sayıları.
+- 1h, 4h ve 1d'de hesaplanan coin sayısı; hata ve kısa geçmiş sayıları. (1d'de ~5 aydan
+  yeni coinler "kısa geçmiş" sayılır, bu normaldir.)
 - Para akışı satırı: OTHERS.D puanı, durum, nereye/nereden.
 - CoinGecko'dan USDC payı alınabildi mi?
 - Timer'ın bir sonraki çalışma zamanı.

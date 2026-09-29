@@ -2,7 +2,8 @@
 Description=Ayrisma - Piyasa Uyumu taraması zamanlayıcı (saatte bir, :02:30)
 
 [Timer]
-# Saat başı mum kapandıktan sonra çalışır; 4 saatlik mumlar da saat başında kapandığı için ikisini de yakalar.
+# Saat başı mum kapandıktan sonra çalışır. 4 saatlik ve günlük mumlar (00:00 UTC = 03:00 TR) da saat başında
+# kapandığı için hepsini yakalar; günlük sonuçlar gün içinde yalnız fiyat/akış bilgisiyle yenilenir.
 OnCalendar=*-*-* *:02:30
 Persistent=true
 Unit=ayrisma_export.service

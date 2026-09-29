@@ -4,7 +4,7 @@ ayrisma_export.py — AYRIŞMA · Piyasa Uyumu tarayıcısı
 (TradingView "AYRIŞMA + MSB-OB" göstergesinin piyasa uyumu bölümünün sunucu karşılığı)
 
 Görevi : OTHERS evrenindeki (ilk 10 + hisse/emtia perp'leri hariç) Bybit USDT perp coinleri
-         için 1s ve 4s'te "coinin fiyatı piyasanın durumuyla uyumlu mu?" sorusunu cevaplar
+         için 1s, 4s ve 1g'de "coinin fiyatı piyasanın durumuyla uyumlu mu?" sorusunu cevaplar
          → /var/www/veri/ayrisma.json  (ayrisma_panel.html bunu okur)
 Timer  : ayrisma_export.timer — her saat :02:30'da tek geçiş (oneshot)
 Girdi  : /var/www/veri/ticker_ws.json (ws_ticker üretir, SALT-OKUR) → coin evreni, 24s veri
@@ -80,6 +80,9 @@ HARIC |= TRADFI | {s.strip().upper() for s in os.environ.get("AYR_HARIC_EK", "")
 TF = {
     "1h": {"iv": "60",  "sn": 3600,  "lenB": 168, "lenA": 24, "limit": 700, "ad": "1 saat"},
     "4h": {"iv": "240", "sn": 14400, "lenB": 120, "lenA": 30, "limit": 700, "ad": "4 saat"},
+    # Günlük: Bybit'in en fazla 1000 mumu (~2,7 yıl). Yeni listelenen coinler için en az ~5 ay geçmiş yeter
+    # (β 100 gün + ayrışma hafızası 3×14 gün); karne için daha uzun geçmişi olanlar kullanılır.
+    "1d": {"iv": "D",   "sn": 86400, "lenB": 100, "lenA": 14, "limit": 1000, "ad": "1 gün", "min_bar": 150},
 }
 UYUM_BANT   = 1.0     # |z| < 1 → uyumlu (gri bant)
 Z_ESIK      = 2.0     # |z| ≥ 2 → belirgin ayrışma
@@ -608,7 +611,7 @@ def para_akisi(grup1h, alt24):
 def zaman_dilimi(tf, coins):
     c = TF[tf]
     lenB, lenA = c["lenB"], c["lenA"]
-    min_bar = lenB + 5 * lenA
+    min_bar = c.get("min_bar", lenB + 5 * lenA)
     isinma = lenB + 3 * lenA
 
     # Piyasa: BTC, ETH (zorunlu) + majör sepeti (eksik olan majör o barda ortalamaya girmez)
@@ -732,6 +735,7 @@ def zaman_dilimi(tf, coins):
     return {
         "ad": c["ad"], "lenB": lenB, "lenA": lenA,
         "son_mum": datetime.fromtimestamp(ortak[-1] / 1000, tz=timezone.utc).isoformat(),
+        "gun": round(len(ortak) * c["sn"] / 86400),
         "piyasa": {"z": yuvarla(mkZ[-1], 2), "m": m_son, "sure": m_sure,
                    "pct": yuvarla((math.exp(sum(rm[-lenA:])) - 1.0) * 100.0, 2),
                    "yon": "↑" if m_son > 0 else "↓" if m_son < 0 else "↔",
