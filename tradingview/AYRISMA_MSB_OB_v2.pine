@@ -10,6 +10,8 @@
 //  • DİO v3: coine özgü ilgi — dolar hacmi + OI + açıklanamayan hareket, piyasadan arındırılmış, sıralama
 //    tabanlı (+2,33σ ≈ en yüksek %1); PANİK · SHORT BASKISI · COŞKU · SHORT SIKIŞMASI etiketleri + karne (BÖLÜM 29).
 //  • Birleşik AL/SAT: 5 teyitten skor; etiket üzerinde gerekçe + stop + 1R/2R (BÖLÜM 30).
+//  • Formasyonlar (BÖLÜM 33): panelin 24 formasyonu, tek tek seçilebilir; grafiğin zaman diliminde ve 1 günlükte (1G)
+//    aranır, noktalar / kenarlar / yay / boyun ve giriş-stop-hedef çizilir; etikette durum, açıklama ve panel karnesi.
 //  • Sade görünüm anahtarı; pencereler zaman dilimine göre otomatik.
 //  Mimari: overlay=false; fiyat paneline giden çizimler force_overlay=true (fill() desteklemez — CE10120).
 //  Plot sınırı 64: alertcondition 1, hesaplanan renk argümanı +1 sayılır → renkler bilinçli sabit.
@@ -2260,3 +2262,759 @@ if barstate.islast
              "\nSHORT SIKIŞMASI: " + f_dkSatir(4) + "\nTüm barlar: " + f_dkSatir(0) : "")
         table.cell(uyT, 0, 0, uyTxt, text_color = uy_col, text_size = uy_sz, text_halign = text.align_left,
              bgcolor = color.new(uy_col, uy_ton == 0 ? 92 : 84), tooltip = uyTip)
+
+// ██████████ KISIM 6 — FORMASYONLAR ██████████
+
+// BÖLÜM 33: 📐 FORMASYON RADARI — grafiğin zaman dilimi + 1 günlük (1G)
+//
+// Panelin (veri.ayaydin.tr · Formasyon) formasyonları. Giriş / stop / hedef formülleri paneldekiyle aynı:
+//   OBO / TOBO      : boyun = iki ara noktanın ortalaması · stop = baş ±%1 · hedef = boyun ∓ (baş − boyun)
+//   Çift / üçlü     : aynı mantık (uç tepe / dip ±%1)
+//   Takoz           : giriş = kırılım kenarının bugünkü değeri · stop = karşı kenar ±%1 · hedef = giriş ± ilk genişlik
+//   Üçgen           : yatay kenar (ya da kırılım kenarı) = giriş · stop = karşı kenar ±%1 · hedef = giriş ± en geniş yükseklik
+//   Bayrak / flama  : giriş = kırılım kenarı · stop = karşı kenar ±%1 · hedef = giriş ± direk boyu
+//   Tas / fincan    : giriş = ağız · stop = dip × 1,02 · hedef = ağız + derinlik   (kubbe: taban · tepe × 0,98 · taban − yükseklik)
+//                     ağız / dip kapanıştan; dip penceresinin %25–75'inde; uyan en geniş pencere (40–140 bar) seçilir
+//   Mumlar          : yutan → giriş = kapanış, hedef = 2R · çekiç / kayan yıldız / yıldızlar → en yakın direnç / destek (yoksa 2R)
+// Tanıma kuralları panelin kodu (pattern_bot) görülmeden, panelin örneklerinden ve tanımlarından kuruldu.
+// Ölçüler ATR cinsindendir, bu yüzden her zaman diliminde çalışır. Tespit yalnız kapanmış barlarda (repaint yok).
+// 1 günlük formasyonlar aynı motorun günlük mumlarda çalışmasıdır (tek request.security) ve her zaman diliminde çizilir.
+// Durum: ⏳ tetik bekliyor · ✅ tetiklendi · 🎯 hedef · 🛑 stop · ✖ iptal (tetikten önce stop) · ⌛ süresi doldu
+// Çizimler label / line / polyline / linefill → 64'lük çizim sınırına sayılmaz. Tüm isimler fm_ / fk ön eklidir.
+
+gF  = "📐📐📐📐📐 FORMASYONLAR 📐📐📐📐📐"
+fm_on  = input.bool(true, "Formasyonları göster", group = gF,
+     tooltip = "Panelin formasyon radarındaki formasyonlar: noktalar, kenar çizgileri, yay, boyun / tetik seviyesi ve giriş / stop / hedef. Etiketin üzerine gelince açıklama, durum ve panelin karnesi görünür.")
+fm_grf = input.bool(true, "Grafiğin zaman diliminde ara", group = gF)
+fm_gun = input.bool(true, "1 günlükte de ara (1G · her zaman diliminde çizilir)", group = gF,
+     tooltip = "İşaretliyse formasyonlar günlük mumlarda da aranır ve bulunanlar hangi zaman dilimindeyseniz o grafiğe çizilir (kesik çizgi, '1G' etiketi). Grafik zaten 1 günlükse iki kez çizilmez.\nNot: TradingView günlük veriyi grafiğin yüklü geçmişi kadar verir; çok küçük zaman dilimlerinde (ör. 5–15 dk) uzun günlük formasyonlar eksik kalabilir.")
+fm_P   = input.int(5, "Dönüş noktası uzunluğu (bar)", minval = 2, maxval = 30, group = gF,
+     tooltip = "Bir tepe / dip, iki yanındaki bu kadar barın en yükseği / en düşüğü olmalı. Büyütünce daha büyük ve daha az formasyon bulunur. Tepe / dip bu kadar bar sonra kesinleşir.")
+fm_yay = input.int(140, "Tas / kubbe / fincan: en geniş pencere (bar)", minval = 40, maxval = 300, group = gF,
+     tooltip = "Yuvarlak dip, yuvarlak tepe ve fincan bu genişliğin %30'u ile tamamı arasında aranır; uyan en geniş pencere seçilir (panel gibi, günlükte 40–140 gün). Ölçüler kapanış fiyatından alınır.")
+fm_tol = input.float(1.0, "Eşitlik toleransı (ATR)", minval = 0.2, step = 0.1, group = gF,
+     tooltip = "İki tepenin / dibin 'aynı seviye' sayılması için en fazla fark ve bir kenarın 'yatay' sayılması için en fazla toplam eğim (ATR cinsinden).")
+fm_min = input.float(3.0, "En küçük formasyon boyu (ATR)", minval = 1.0, step = 0.5, group = gF,
+     tooltip = "Formasyonun yüksekliği / derinliği en az bu kadar ATR olmalı; küçük gürültü formasyonlarını eler.")
+fm_max = input.int(6, "Her zaman diliminde en fazla formasyon", minval = 1, maxval = 20, group = gF)
+fm_gec = input.int(20, "Sonuçlananları da göster: son kaç bar", minval = 0, maxval = 500, group = gF,
+     tooltip = "Hedefe ulaşan, stop olan, iptal olan ya da süresi dolan formasyon bu kadar bar daha ekranda kalır (1G için gün). 0 = yalnız bekleyen ve aktif olanlar.")
+fm_plan = input.bool(true, "Giriş / stop / hedef çizgileri", inline = "fmg", group = gF)
+fm_nok  = input.bool(true, "Nokta adları", inline = "fmg", group = gF)
+fm_cL   = input.color(#26a69a, "Renk: yükseliş", inline = "fmc", group = gF)
+fm_cS   = input.color(#ef5350, "düşüş", inline = "fmc", group = gF)
+
+gFS = "📐📐📐📐📐 FORMASYONLAR · HANGİLERİ? 📐📐📐📐📐"
+fk01 = input.bool(true,  "Çift tepe",             inline = "fk1",  group = gFS)
+fk02 = input.bool(true,  "Çift dip",              inline = "fk1",  group = gFS)
+fk03 = input.bool(true,  "Üçlü tepe",             inline = "fk2",  group = gFS)
+fk04 = input.bool(true,  "Üçlü dip",              inline = "fk2",  group = gFS)
+fk05 = input.bool(true,  "OBO",                   inline = "fk3",  group = gFS)
+fk06 = input.bool(true,  "TOBO",                  inline = "fk3",  group = gFS)
+fk07 = input.bool(true,  "Yükselen üçgen",        inline = "fk4",  group = gFS)
+fk08 = input.bool(true,  "Alçalan üçgen",         inline = "fk4",  group = gFS)
+fk09 = input.bool(true,  "Simetrik üçgen",        inline = "fk5",  group = gFS)
+fk10 = input.bool(true,  "Yükselen takoz",        inline = "fk6",  group = gFS)
+fk11 = input.bool(true,  "Düşen takoz",           inline = "fk6",  group = gFS)
+fk12 = input.bool(true,  "Boğa bayrağı",          inline = "fk7",  group = gFS)
+fk13 = input.bool(true,  "Ayı bayrağı",           inline = "fk7",  group = gFS)
+fk14 = input.bool(true,  "Flama",                 inline = "fk8",  group = gFS)
+fk15 = input.bool(true,  "Tas (yuvarlak dip)",    inline = "fk9",  group = gFS)
+fk16 = input.bool(true,  "Kubbe (yuvarlak tepe)", inline = "fk9",  group = gFS)
+fk17 = input.bool(true,  "Fincan-kulp",           inline = "fk10", group = gFS)
+fk18 = input.bool(false, "Yutan boğa",            inline = "fk11", group = gFS)
+fk19 = input.bool(false, "Yutan ayı",             inline = "fk11", group = gFS)
+fk20 = input.bool(false, "Çekiç",                 inline = "fk12", group = gFS)
+fk21 = input.bool(false, "Kayan yıldız",          inline = "fk12", group = gFS)
+fk22 = input.bool(false, "Doji",                  inline = "fk13", group = gFS)
+fk23 = input.bool(false, "Sabah yıldızı",         inline = "fk14", group = gFS)
+fk24 = input.bool(false, "Akşam yıldızı",         inline = "fk14", group = gFS,
+     tooltip = "Mum formasyonları (yutan, çekiç, kayan yıldız, doji, yıldızlar) bir-üç mumluktur ve sık çıkar; panelin karnesinde örnekleri azdır. Bu yüzden varsayılan olarak kapalıdır.")
+
+FMR = 32      // bir formasyon kaydının uzunluğu (kayan sayı)
+
+f_fmAcik(int _k) =>
+    switch _k
+        1  => fk01
+        2  => fk02
+        3  => fk03
+        4  => fk04
+        5  => fk05
+        6  => fk06
+        7  => fk07
+        8  => fk08
+        9  => fk09
+        10 => fk10
+        11 => fk11
+        12 => fk12
+        13 => fk13
+        14 => fk14
+        15 => fk15
+        16 => fk16
+        17 => fk17
+        18 => fk18
+        19 => fk19
+        20 => fk20
+        21 => fk21
+        22 => fk22
+        23 => fk23
+        24 => fk24
+        => false
+
+// İki noktadan geçen doğrunun _t anındaki değeri
+f_fmCv(float _t1, float _p1, float _t2, float _p2, float _t) => _t2 == _t1 ? _p2 : _p1 + (_p2 - _p1) * (_t - _t1) / (_t2 - _t1)
+
+// Zigzag'a dönüş noktası ekle: aynı yönde ardışık iki nokta gelirse daha uç olan kalır
+f_fmZz(float[] _zp, int[] _zt, int[] _zb, int[] _zd, float _p, int _t, int _b, int _d) =>
+    int n = array.size(_zd)
+    if n > 0 and array.get(_zd, n - 1) == _d
+        float s = array.get(_zp, n - 1)
+        if (_d == 1 and _p >= s) or (_d == -1 and _p <= s)
+            array.set(_zp, n - 1, _p)
+            array.set(_zt, n - 1, _t)
+            array.set(_zb, n - 1, _b)
+    else
+        array.push(_zp, _p)
+        array.push(_zt, _t)
+        array.push(_zb, _b)
+        array.push(_zd, _d)
+        if array.size(_zd) > 12
+            array.shift(_zp)
+            array.shift(_zt)
+            array.shift(_zb)
+            array.shift(_zd)
+    true
+
+// En yakın direnç (_yon = 1: _ref üstündeki son tepe) ya da destek (_yon = −1: _ref altındaki son dip)
+f_fmYakin(float[] _zp, int[] _zd, float _ref, int _yon) =>
+    float sonuc = na
+    int n = array.size(_zd)
+    if n > 0
+        for i = n - 1 to 0
+            float p = array.get(_zp, i)
+            if array.get(_zd, i) == _yon and (_yon == 1 ? p > _ref : p < _ref)
+                sonuc := p
+                break
+    sonuc
+
+// Kayıt düzeni (FMR = 32): 0 kod · 1 yön · 2 durum · 3 bulunma zamanı · 4 son durum zamanı · 5 giriş · 6 stop · 7 hedef ·
+// 8 seviye · 9 nokta sayısı · 10–19 noktalar (t, p) × 5 · 20–23 kenar A (t1, p1, t2, p2) · 24–27 kenar B ·
+// 28 bekleme sınırı (bar) · 29 çizim (0 zigzag · 1 yay · 2 kenarlar · 3 mum) · 30 giriş kenarı (0 sabit · 1 A · 2 B) · 31 bulunma barı
+f_fmYaz(float[] _k, int _kod, int _yon, float _gir, float _stp, float _hdf, float _sev, int _tip, int _gc, int _bek, float[] _nt, float[] _ln) =>
+    int o = (_kod - 1) * FMR
+    array.fill(_k, float(na), o, o + FMR)
+    array.set(_k, o,      _kod)
+    array.set(_k, o + 1,  _yon)
+    array.set(_k, o + 2,  0)
+    array.set(_k, o + 3,  time)
+    array.set(_k, o + 4,  time)
+    array.set(_k, o + 5,  _gir)
+    array.set(_k, o + 6,  _stp)
+    array.set(_k, o + 7,  _hdf)
+    array.set(_k, o + 8,  _sev)
+    int nn = math.min(10, array.size(_nt))
+    array.set(_k, o + 9,  int(nn / 2))
+    if nn > 0
+        for i = 0 to nn - 1
+            array.set(_k, o + 10 + i, array.get(_nt, i))
+    if array.size(_ln) >= 8
+        for i = 0 to 7
+            array.set(_k, o + 20 + i, array.get(_ln, i))
+    array.set(_k, o + 28, _bek)
+    array.set(_k, o + 29, _tip)
+    array.set(_k, o + 30, _gc)
+    array.set(_k, o + 31, bar_index)
+    true
+
+// ── Formasyon motoru: hangi zaman diliminde çağrılırsa onun mumlarında çalışır (grafik ya da request.security ile 1 gün)
+// Döndürdüğü dizi her formasyon türünün en son kaydını tutar (24 × FMR).
+f_fmTara(bool _on) =>
+    var float[] kay = array.new_float(24 * FMR, na)
+    var float[] zp  = array.new_float()
+    var int[]   zt  = array.new_int()
+    var int[]   zb  = array.new_int()
+    var int[]   zd  = array.new_int()
+    float fAtr   = ta.atr(14)
+    float ph    = ta.pivothigh(high, fm_P, fm_P)
+    float pl    = ta.pivotlow(low, fm_P, fm_P)
+    float ema   = ta.ema(close, 50)
+    int   Wx    = fm_yay                              // en geniş yay penceresi
+    int   Wn    = math.max(20, int(Wx * 0.3))         // en dar yay penceresi
+    int   j5    = math.max(3, int(Wx / 5))
+    int   rO    = -ta.highestbars(close, j5)          // fincanın sağ ağzı: son j5 barın en yüksek kapanışı (kaç bar önce)
+    bool  okN   = _on and barstate.isconfirmed and not na(fAtr) and bar_index > 60
+    bool  okY   = okN and bar_index > Wx + j5 + 10
+
+    // ── 0) Durum takibi: tetik, hedef, stop, iptal, süre
+    if _on
+        for k = 0 to 23
+            int o = k * FMR
+            if not na(array.get(kay, o))
+                int du = int(array.get(kay, o + 2))
+                int yn = int(array.get(kay, o + 1))
+                if du <= 1 and bar_index > array.get(kay, o + 31)
+                    float gir = array.get(kay, o + 5)
+                    float stp = array.get(kay, o + 6)
+                    float hdf = array.get(kay, o + 7)
+                    int   gc  = int(array.get(kay, o + 30))
+                    if du == 0 and gc > 0
+                        int   q    = o + (gc == 1 ? 20 : 24)
+                        float yGir = f_fmCv(array.get(kay, q), array.get(kay, q + 1), array.get(kay, q + 2), array.get(kay, q + 3), time)
+                        if not na(yGir)
+                            hdf := hdf + (yGir - gir)
+                            gir := yGir
+                            array.set(kay, o + 5, gir)
+                            array.set(kay, o + 7, hdf)
+                    int  dn   = du
+                    bool bitti = bar_index - array.get(kay, o + 31) > array.get(kay, o + 28)
+                    if du == 0
+                        if yn == 0
+                            dn := bitti ? 5 : 0
+                        else if (yn == 1 and close < stp) or (yn == -1 and close > stp)
+                            dn := 4
+                        else if (yn == 1 and close > gir) or (yn == -1 and close < gir)
+                            dn := 1
+                        else if bitti
+                            dn := 5
+                    else
+                        if (yn == 1 and low <= stp) or (yn == -1 and high >= stp)
+                            dn := 3
+                        else if (yn == 1 and high >= hdf) or (yn == -1 and low <= hdf)
+                            dn := 2
+                    if dn != du
+                        array.set(kay, o + 2, dn)
+                        array.set(kay, o + 4, time)
+
+    // ── 1) Dönüş noktaları → zigzag
+    bool yeniNokta = false
+    if okN and not na(ph)
+        f_fmZz(zp, zt, zb, zd, ph, time[fm_P], bar_index - fm_P, 1)
+        yeniNokta := true
+    if okN and not na(pl)
+        f_fmZz(zp, zt, zb, zd, pl, time[fm_P], bar_index - fm_P, -1)
+        yeniNokta := true
+    int n = array.size(zd)
+
+    // ── 2) Noktalardan formasyonlar (yeni dönüş noktası kesinleşince)
+    if yeniNokta and n >= 5
+        int   dS = array.get(zd, n - 1)
+        float p0 = array.get(zp, n - 1)
+        float p1 = array.get(zp, n - 2)
+        float p2 = array.get(zp, n - 3)
+        float p3 = array.get(zp, n - 4)
+        float p4 = array.get(zp, n - 5)
+        int   t0 = array.get(zt, n - 1)
+        int   t1 = array.get(zt, n - 2)
+        int   t2 = array.get(zt, n - 3)
+        int   t3 = array.get(zt, n - 4)
+        int   t4 = array.get(zt, n - 5)
+        int   b0 = array.get(zb, n - 1)
+        int   b1 = array.get(zb, n - 2)
+        int   b2 = array.get(zb, n - 3)
+        int   b3 = array.get(zb, n - 4)
+        int   b4 = array.get(zb, n - 5)
+        float sg  = dS == 1 ? 1.0 : -1.0          // tepe formasyonu +1 · dip formasyonu −1 (fiyatlar sg ile çevrilir)
+        float tol = fm_tol * fAtr
+        bool  bul = false
+
+        // 2a) Üçlü tepe / dip · OBO / TOBO: p4 (sol) · p3 · p2 (orta / baş) · p1 · p0 (sağ); p5 öncesi
+        if n >= 6
+            float p5  = array.get(zp, n - 6)
+            float a1  = sg * p4
+            float m1  = sg * p3
+            float a2  = sg * p2
+            float m2  = sg * p1
+            float a3  = sg * p0
+            float boy = (m1 + m2) / 2.0
+            float aMx = math.max(a1, a2, a3)
+            float aMn = math.min(a1, a2, a3)
+            bool  onc = sg * p5 < math.min(m1, m2)
+            bool  ucl = aMx - aMn <= 1.2 * tol and aMn - boy >= fm_min * fAtr
+            bool  obo = a2 - math.max(a1, a3) >= 0.5 * tol and math.abs(a1 - a3) <= 1.5 * tol and math.abs(m1 - m2) <= 1.5 * tol and
+                 math.min(a1, a3) - boy >= 0.3 * (a2 - boy) and a2 - boy >= fm_min * fAtr
+            int   kd  = not onc ? 0 : ucl ? (dS == 1 ? 3 : 4) : obo ? (dS == 1 ? 5 : 6) : 0
+            if kd > 0 and f_fmAcik(kd)
+                float neck = sg * boy
+                float uc   = sg * aMx
+                float ort  = ucl ? sg * (a1 + a2 + a3) / 3.0 : p2
+                f_fmYaz(kay, kd, -dS, neck, dS == 1 ? uc * 1.01 : uc * 0.99, neck - (ort - neck), neck, 0, 0, math.max(20, b0 - b4),
+                     array.from(float(t4), p4, float(t3), p3, float(t2), p2, float(t1), p1, float(t0), p0), array.new_float(8, na))
+                bul := true
+
+        // 2b) Çift tepe / dip: p2 · p1 (boyun) · p0; p3 öncesi
+        if not bul
+            float a1 = sg * p2
+            float m1 = sg * p1
+            float a2 = sg * p0
+            int   kd = dS == 1 ? 1 : 2
+            if math.abs(a1 - a2) <= tol and math.min(a1, a2) - m1 >= fm_min * fAtr and sg * p3 < m1 and f_fmAcik(kd)
+                float uc  = sg * math.max(a1, a2)
+                float ort = sg * (a1 + a2) / 2.0
+                f_fmYaz(kay, kd, -dS, p1, dS == 1 ? uc * 1.01 : uc * 0.99, p1 - (ort - p1), p1, 0, 0, math.max(20, b0 - b2),
+                     array.from(float(t2), p2, float(t1), p1, float(t0), p0), array.new_float(8, na))
+                bul := true
+
+        // 2c) Kenar formasyonları: son 4 nokta (2 tepe + 2 dip); öncesindeki nokta (p4) direk dibi / tepesi
+        if not bul
+            float hA  = dS == 1 ? p2 : p3
+            float hB  = dS == 1 ? p0 : p1
+            float lA  = dS == 1 ? p3 : p2
+            float lB  = dS == 1 ? p1 : p0
+            int   bhA = dS == 1 ? b2 : b3
+            int   bhB = dS == 1 ? b0 : b1
+            int   blA = dS == 1 ? b3 : b2
+            int   blB = dS == 1 ? b1 : b0
+            float su  = (hB - hA) / math.max(1, bhB - bhA)
+            float sl  = (lB - lA) / math.max(1, blB - blA)
+            int   w   = b0 - b3
+            float uS  = hA + su * (b3 - bhA)
+            float lS  = lA + sl * (b3 - blA)
+            float uE  = hA + su * (b0 - bhA)
+            float lE  = lA + sl * (b0 - blA)
+            float hS  = uS - lS
+            float hE  = uE - lE
+            float dU  = su * w
+            float dL  = sl * w
+            float yat = fm_tol * fAtr
+            bool  cnv = hE > 0 and hE < 0.75 * hS
+            bool  par = hE >= 0.75 * hS and hE <= 1.33 * hS
+            float dirH = math.abs(p3 - p4)
+            int   dirB = b3 - b4
+            int   dirY = p3 > p4 ? 1 : -1
+            bool  dkV = dirH >= math.max(2.0 * hS, 2.0 * fm_min * fAtr) and dirB <= w and w <= math.max(4 * dirB, 8 * fm_P)
+            int   kd  = 0
+            int   yn  = 0
+            if hS >= fm_min * fAtr and w <= 300
+                if dkV and cnv
+                    kd := 14
+                    yn := dirY
+                else if dkV and par and (dirY == 1 ? dU <= 0.5 * yat and dL <= 0.5 * yat : dU >= -0.5 * yat and dL >= -0.5 * yat)
+                    kd := dirY == 1 ? 12 : 13
+                    yn := dirY
+                else if cnv and math.abs(dU) <= yat and dL >= yat
+                    kd := 7
+                    yn := 1
+                else if cnv and math.abs(dL) <= yat and dU <= -yat
+                    kd := 8
+                    yn := -1
+                else if cnv and dU <= -yat and dL >= yat
+                    kd := 9
+                    yn := dirY
+                else if cnv and dU >= yat and dL > dU
+                    kd := 10
+                    yn := -1
+                else if cnv and dL <= -yat and dU < dL
+                    kd := 11
+                    yn := 1
+            if kd > 0 and f_fmAcik(kd)
+                // gövde içinde kalmalı: kapanışların en fazla %10'u kenarların dışına taşabilir
+                int dis = 0
+                for i = bar_index - b0 to bar_index - b3
+                    int   bb = bar_index - i
+                    float u  = hA + su * (bb - bhA)
+                    float l  = lA + sl * (bb - blA)
+                    if close[i] > u + 0.15 * hS or close[i] < l - 0.15 * hS
+                        dis += 1
+                if dis <= math.max(2, int(w / 10))
+                    float uN  = hA + su * (bar_index - bhA)          // kenarların bugünkü değeri
+                    float lN  = lA + sl * (bar_index - blA)
+                    float mes = kd >= 12 ? dirH : hS                  // hedef mesafesi: direk boyu ya da ilk genişlik
+                    float sev = kd == 7 ? (hA + hB) / 2.0 : kd == 8 ? (lA + lB) / 2.0 : float(na)
+                    float gir = kd == 7 or kd == 8 ? sev : yn == 1 ? uN : lN
+                    float stp = yn == 1 ? lN * 0.99 : uN * 1.01
+                    f_fmYaz(kay, kd, yn, gir, stp, gir + yn * mes, sev, 2, kd == 7 or kd == 8 ? 0 : yn == 1 ? 1 : 2, math.max(20, w),
+                         kd >= 12 ? array.from(float(t4), p4, float(t3), p3) : array.new_float(),
+                         array.from(kd == 7 ? float(na) : float(t3), uS, float(t0), uE, kd == 8 ? float(na) : float(t3), lS, float(t0), lE))
+
+    // ── 3) Yay formasyonları — panel gibi KAPANIŞ tabanlı: sol ağız = pencere başındaki kapanış, dip (tepe) = penceredeki
+    //    en düşük (en yüksek) kapanış ve pencerenin %25–75'inde, sağ ağız = bugünkü kapanış; uyan EN GENİŞ pencere seçilir.
+    //    Fincanda sağ ağız son j5 barın en yüksek kapanışıdır, sonrası kulp. Tas / kubbede yuvarlaklık: kapanışların en az
+    //    %25'i dibin (tepenin) üçte birlik bölgesinde olmalı (sivri V elenir). Panelle karşılaştırma (65 coin, günlük):
+    //    paneldeki 46 tasın 32'si, 23 fincanın 17'si bulundu.
+    bool fincan = false
+    if okY and f_fmAcik(17) and rO >= 2
+        float rR   = close[rO]
+        float kulp = close
+        int   kO   = 0
+        for i = 0 to rO - 1
+            if close[i] < kulp
+                kulp := close[i]
+                kO   := i
+        float mn   = rR
+        int   mnO  = rO
+        int   bJ   = 0
+        float bL   = na
+        float bRim = na
+        float bMn  = na
+        int   bMnO = 0
+        for j = 1 to Wx
+            float c = close[rO + j]
+            if c < mn
+                mn  := c
+                mnO := rO + j
+            if j >= Wn and j % 5 == 0
+                float rim = math.max(c, rR)
+                float dep = math.min(c, rR) - mn
+                float pos = float(mnO - rO) / j
+                if dep >= 1.33 * fm_min * fAtr and math.abs(c - rR) <= 0.10 * dep and pos >= 0.25 and pos <= 0.75 and kulp >= rim - 0.5 * dep and close <= rim
+                    bJ   := j
+                    bL   := c
+                    bRim := rim
+                    bMn  := mn
+                    bMnO := mnO
+        if bJ > 0
+            float tDip = float(time[bMnO])
+            int   o    = 16 * FMR
+            if na(array.get(kay, o)) or array.get(kay, o + 12) != tDip
+                f_fmYaz(kay, 17, 1, bRim, bMn * 1.02, bRim + (bRim - bMn), bRim, 1, 0, math.max(20, int(bJ / 2)),
+                     array.from(float(time[rO + bJ]), bL, tDip, bMn, float(time[rO]), rR, float(time[kO]), kulp), array.new_float(8, na))
+                fincan := true
+    if okY and (f_fmAcik(15) or f_fmAcik(16))
+        float mn   = close
+        int   mnO  = 0
+        float mx   = close
+        int   mxO  = 0
+        int   tJ   = 0
+        float tL   = na
+        float tRim = na
+        float tMn  = na
+        int   tMnO = 0
+        int   kJ   = 0
+        float kL   = na
+        float kFl  = na
+        float kMx  = na
+        int   kMxO = 0
+        for j = 1 to Wx
+            float c = close[j]
+            if c < mn
+                mn  := c
+                mnO := j
+            if c > mx
+                mx  := c
+                mxO := j
+            if j >= Wn and j % 5 == 0
+                float dep = math.min(c, close) - mn
+                if dep >= 1.33 * fm_min * fAtr and math.abs(c - close) <= 0.20 * dep and mnO >= 0.25 * j and mnO <= 0.75 * j
+                    tJ   := j
+                    tL   := c
+                    tRim := math.max(c, close)
+                    tMn  := mn
+                    tMnO := mnO
+                float hgt = mx - math.max(c, close)
+                if hgt >= 2.0 * fm_min * fAtr and math.abs(c - close) <= 0.20 * hgt and mxO >= 0.25 * j and mxO <= 0.75 * j
+                    kJ   := j
+                    kL   := c
+                    kFl  := math.min(c, close)
+                    kMx  := mx
+                    kMxO := mxO
+        if tJ > 0
+            int say = 0
+            for q = 0 to tJ
+                say += close[q] <= tMn + (tRim - tMn) / 3.0 ? 1 : 0
+            if say < 0.25 * (tJ + 1)
+                tJ := 0
+        if kJ > 0
+            int say = 0
+            for q = 0 to kJ
+                say += close[q] >= kMx - (kMx - kFl) / 3.0 ? 1 : 0
+            if say < 0.25 * (kJ + 1)
+                kJ := 0
+        if tJ > 0 and not fincan and f_fmAcik(15)
+            float tDip = float(time[tMnO])
+            int   o    = 14 * FMR
+            if na(array.get(kay, o)) or array.get(kay, o + 12) != tDip
+                f_fmYaz(kay, 15, 1, tRim, tMn * 1.02, tRim + (tRim - tMn), tRim, 1, 0, math.max(20, int(tJ / 2)),
+                     array.from(float(time[tJ]), tL, tDip, tMn, float(time), close), array.new_float(8, na))
+        if kJ > 0 and f_fmAcik(16)
+            float tTep = float(time[kMxO])
+            int   o    = 15 * FMR
+            if na(array.get(kay, o)) or array.get(kay, o + 12) != tTep
+                f_fmYaz(kay, 16, -1, kFl, kMx * 0.98, kFl - (kMx - kFl), kFl, 1, 0, math.max(20, int(kJ / 2)),
+                     array.from(float(time[kJ]), kL, tTep, kMx, float(time), close), array.new_float(8, na))
+
+    // ── 4) Mum formasyonları (kapanmış bar)
+    if okN
+        float bd  = math.abs(close - open)
+        float bd1 = math.abs(close[1] - open[1])
+        float bd2 = math.abs(close[2] - open[2])
+        float rg  = high - low
+        float uw  = high - math.max(open, close)
+        float lw  = math.min(open, close) - low
+        bool  dus = close[1] < close[6] and close[1] < ema[1]
+        bool  yuk = close[1] > close[6] and close[1] > ema[1]
+        float rY  = f_fmYakin(zp, zd, high, 1)
+        float rA  = f_fmYakin(zp, zd, low, -1)
+        if f_fmAcik(18) and dus and close[1] < open[1] and close > open and open <= close[1] and close >= open[1] and bd > bd1
+            float s = math.min(low, low[1])
+            f_fmYaz(kay, 18, 1, close, s, close + 2.0 * (close - s), na, 3, 0, 5, array.from(float(time), low), array.new_float(8, na))
+        if f_fmAcik(19) and yuk and close[1] > open[1] and close < open and open >= close[1] and close <= open[1] and bd > bd1
+            float s = math.max(high, high[1])
+            f_fmYaz(kay, 19, -1, close, s, close - 2.0 * (s - close), na, 3, 0, 5, array.from(float(time), high), array.new_float(8, na))
+        if f_fmAcik(20) and dus and rg > 0.5 * fAtr and lw >= 2.0 * bd and lw >= 0.55 * rg and uw <= 0.25 * rg
+            f_fmYaz(kay, 20, 1, high, low, na(rY) ? high + 2.0 * rg : rY, na, 3, 0, 5, array.from(float(time), low), array.new_float(8, na))
+        if f_fmAcik(21) and yuk and rg > 0.5 * fAtr and uw >= 2.0 * bd and uw >= 0.55 * rg and lw <= 0.25 * rg
+            f_fmYaz(kay, 21, -1, low, high, na(rA) ? low - 2.0 * rg : rA, na, 3, 0, 5, array.from(float(time), high), array.new_float(8, na))
+        if f_fmAcik(22) and rg > 0.5 * fAtr and bd <= 0.1 * rg
+            f_fmYaz(kay, 22, 0, na, na, na, na, 3, 0, 5, array.from(float(time), high), array.new_float(8, na))
+        if f_fmAcik(23) and close[3] < close[8] and close[2] < open[2] and bd2 >= 0.5 * fAtr and bd1 <= 0.3 * bd2 and close > open and close >= (open[2] + close[2]) / 2.0
+            float s = math.min(low, low[1], low[2])
+            f_fmYaz(kay, 23, 1, high, s, na(rY) ? high + 2.0 * (high - s) : rY, na, 3, 0, 5, array.from(float(time), low), array.new_float(8, na))
+        if f_fmAcik(24) and close[3] > close[8] and close[2] > open[2] and bd2 >= 0.5 * fAtr and bd1 <= 0.3 * bd2 and close < open and close <= (open[2] + close[2]) / 2.0
+            float s = math.max(high, high[1], high[2])
+            f_fmYaz(kay, 24, -1, low, s, na(rA) ? low - 2.0 * (s - low) : rA, na, 3, 0, 5, array.from(float(time), high), array.new_float(8, na))
+    kay
+
+// ── Motorun iki çalışması: grafiğin zaman dilimi ve 1 günlük (günlük mumlarda, aynı kurallar)
+fm_kay  = f_fmTara(fm_on and fm_grf)
+fm_kayG = request.security(syminfo.tickerid, "D", f_fmTara(fm_on and fm_gun), barmerge.gaps_off, barmerge.lookahead_off)
+
+// ── Metinler
+f_fmAd(int _k) =>
+    switch _k
+        1  => "Çift Tepe"
+        2  => "Çift Dip"
+        3  => "Üçlü Tepe"
+        4  => "Üçlü Dip"
+        5  => "OBO"
+        6  => "TOBO"
+        7  => "Yükselen Üçgen"
+        8  => "Alçalan Üçgen"
+        9  => "Simetrik Üçgen"
+        10 => "Yükselen Takoz"
+        11 => "Düşen Takoz"
+        12 => "Boğa Bayrağı"
+        13 => "Ayı Bayrağı"
+        14 => "Flama"
+        15 => "Tas (Yuvarlak Dip)"
+        16 => "Kubbe (Yuvarlak Tepe)"
+        17 => "Fincan-Kulp"
+        18 => "Yutan Boğa"
+        19 => "Yutan Ayı"
+        20 => "Çekiç"
+        21 => "Kayan Yıldız"
+        22 => "Doji"
+        23 => "Sabah Yıldızı"
+        24 => "Akşam Yıldızı"
+        => "?"
+
+f_fmOzet(int _k) =>
+    switch _k
+        1  => "Yükseliş sonrası aynı direnci iki kez aşamayan iki tepe. Boyun kırılınca aktif. Hedef = boyun − (tepe − boyun)."
+        2  => "Düşüş sonrası aynı desteği iki kez kıramayan iki dip. Boyun yukarı kırılınca aktif. Hedef = boyun + (boyun − dip)."
+        3  => "Aynı direnci üç kez aşamayan üç tepe; aradaki dipler boyun. Hedef = boyun − (tepe − boyun)."
+        4  => "Aynı desteği üç kez kıramayan üç dip; aradaki tepeler boyun. Hedef = boyun + (boyun − dip)."
+        5  => "Ortadaki en yüksek (baş), yandakiler yaklaşık eşit (omuzlar). Boyun kırılınca aktif. Hedef = boyun − (baş − boyun)."
+        6  => "Ortadaki en düşük (baş), yandakiler yaklaşık eşit (omuzlar). Boyun yukarı kırılınca aktif. Hedef = boyun + (boyun − baş)."
+        7  => "Yatay direnç + yükselen dipler. Direnç kırılınca aktif. Hedef = kırılım + üçgenin en geniş yüksekliği."
+        8  => "Yatay destek + alçalan tepeler. Destek kırılınca aktif. Hedef = kırılım − en geniş yükseklik."
+        9  => "Alçalan tepeler + yükselen dipler; kırıldığı yöne gider (genelde trend yönünde). Yön, öncesindeki harekete göre seçildi. Hedef = kırılım ± en geniş yükseklik."
+        10 => "İki kenar da yükseliyor ama daralıyor (alt kenar daha dik). Alt kenar kırılınca düşüş. Hedef = kırılım − takozun ilk genişliği."
+        11 => "İki kenar da düşüyor ama daralıyor (üst kenar daha dik). Üst kenar kırılınca yükseliş. Hedef = kırılım + takozun ilk genişliği."
+        12 => "Sert yükseliş (direk) sonrası hafif aşağı eğimli dar kanal. Üst kenar kırılınca devam. Hedef = kırılım + direk boyu."
+        13 => "Sert düşüş (direk) sonrası hafif yukarı eğimli dar kanal. Alt kenar kırılınca devam. Hedef = kırılım − direk boyu."
+        14 => "Sert hareket (direk) sonrası kısa, daralan sıkışma; direk yönünde kırılım beklenir. Hedef = kırılım ± direk boyu."
+        15 => "U şeklinde yavaş dip; fiyat ağız seviyesine döndü. Ağız kırılınca aktif. Hedef = ağız + derinlik."
+        16 => "Ters U şeklinde yavaş tepe; fiyat taban seviyesine döndü. Taban kırılınca düşüş. Hedef = taban − kubbenin yüksekliği."
+        17 => "U şeklinde fincan + sağda küçük geri çekilme (kulp). Ağız kırılınca aktif. Hedef = ağız + fincanın derinliği."
+        18 => "Düşüş sonrası önceki kırmızı mumu tamamen yutan yeşil mum. Giriş kapanış, stop iki mumun dibi, hedef 2R."
+        19 => "Yükseliş sonrası önceki yeşil mumu tamamen yutan kırmızı mum. Giriş kapanış, stop iki mumun tepesi, hedef 2R."
+        20 => "Düşüşün dibinde uzun alt fitilli küçük gövdeli mum. Teyit: mumun üstünde kapanış. Hedef en yakın direnç (yoksa 2R)."
+        21 => "Yükselişin tepesinde uzun üst fitilli küçük gövdeli mum. Teyit: mumun altında kapanış. Hedef en yakın destek (yoksa 2R)."
+        22 => "Açılış ≈ kapanış: kararsızlık. Tek başına sinyal değildir; sonraki mumun kırdığı yön izlenir."
+        23 => "Uzun düşüş mumu → küçük mum → güçlü yükseliş mumu. Giriş üçüncü mumun üstü, hedef en yakın direnç (yoksa 2R)."
+        24 => "Uzun yükseliş mumu → küçük mum → güçlü düşüş mumu. Giriş üçüncü mumun altı, hedef en yakın destek (yoksa 2R)."
+        => ""
+
+// Panelin karnesi (pattern_karne.json, 29.09.2026): isabet = hedefe stoptan önce ulaşma oranı;
+// rastgele = aynı stop / hedef mesafeleriyle yönsüz girilseydi beklenen isabet.
+f_fmKarne(int _k) =>
+    switch _k
+        1  => "isabet %50 · rastgele %53 · rastgeleden ayırt edilemiyor (n=50)"
+        2  => "isabet %58 · rastgele %52 · rastgeleden ayırt edilemiyor (n=65) · 1G'de %74 (n=23)"
+        3  => "veri yetersiz (n=2)"
+        4  => "henüz örnek yok"
+        5  => "isabet %28 · rastgele %52 · rastgeleden KÖTÜ (n=32)"
+        6  => "isabet %78 · rastgele %52 · rastgeleden İYİ (n=134) · 1G'de %89 (n=66)"
+        7  => "isabet %21 · rastgele %16 · veri yetersiz (n=14)"
+        8  => "isabet %8 · rastgele %20 · veri yetersiz (n=25)"
+        9  => "veri yetersiz (n=4)"
+        10 => "isabet %29 · rastgele %29 · rastgeleden ayırt edilemiyor (n=68)"
+        11 => "isabet %18 · rastgele %17 · rastgeleden ayırt edilemiyor (n=44)"
+        12 => "isabet %26 · rastgele %22 · rastgeleden ayırt edilemiyor (n=155)"
+        13 => "isabet %7 · rastgele %17 · rastgeleden KÖTÜ (n=129)"
+        14 => "veri yetersiz (n=4)"
+        15 => "isabet %84 · rastgele %49 · rastgeleden İYİ (n=241) · 1G'de %89 (n=205)"
+        16 => "isabet %15 · rastgele %48 · veri yetersiz (n=27)"
+        17 => "isabet %82 · rastgele %48 · rastgeleden İYİ (n=246) · 1G'de %89 (n=120)"
+        18 => "veri yetersiz (n=3)"
+        19 => "veri yetersiz (n=6)"
+        22 => "hedef üretmez"
+        23 => "veri yetersiz (n=1)"
+        24 => "isabet %60 · rastgele %33 · veri yetersiz (n=5)"
+        => "henüz örnek yok"
+
+f_fmNokAd(int _k, int _i) =>
+    _k == 1 ? (_i == 0 ? "1. tepe" : _i == 1 ? "boyun" : "2. tepe") :
+     _k == 2 ? (_i == 0 ? "1. dip" : _i == 1 ? "boyun" : "2. dip") :
+     _k == 3 ? (_i % 2 == 0 ? str.tostring(int(_i / 2) + 1) + ". tepe" : "") :
+     _k == 4 ? (_i % 2 == 0 ? str.tostring(int(_i / 2) + 1) + ". dip" : "") :
+     _k == 5 or _k == 6 ? (_i == 0 ? "Sol omuz" : _i == 2 ? "Baş" : _i == 4 ? "Sağ omuz" : "") :
+     _k >= 12 and _k <= 14 ? (_i == 1 ? "direk" : "") :
+     _k == 15 ? (_i == 0 ? "Başlangıç" : _i == 1 ? "Dip" : "Ağız") :
+     _k == 16 ? (_i == 0 ? "Başlangıç" : _i == 1 ? "Tepe" : "Ağız") :
+     _k == 17 ? (_i == 0 ? "Başlangıç" : _i == 1 ? "Fincan dibi" : _i == 2 ? "Ağız" : "Kulp") : ""
+
+// Nokta bir tepe mi (etiket üstte) yoksa dip mi (etiket altta)?
+f_fmUstNok(int _k, int _i, int _yn) =>
+    _k == 1 or _k == 3 or _k == 5 ? _i % 2 == 0 :
+     _k == 2 or _k == 4 or _k == 6 ? _i % 2 == 1 :
+     _k >= 12 and _k <= 14 ? (_yn == 1 ? _i == 1 : _i == 0) :
+     _k == 15 or _k == 17 ? (_i == 0 or _i == 2) :
+     _k == 16 ? _i == 1 : _yn == -1
+
+f_fmSevAd(int _k) => _k <= 6 ? "Boyun" : _k == 7 ? "Yatay direnç" : _k == 8 ? "Yatay destek" : _k == 16 ? "Taban (tetik)" : "Ağız (tetik)"
+f_fmDuIk(int _d) => _d == 0 ? "⏳" : _d == 1 ? "✅" : _d == 2 ? "🎯" : _d == 3 ? "🛑" : _d == 4 ? "✖" : "⌛"
+f_fmDuMt(int _d) => _d == 0 ? "⏳ tetik bekliyor" : _d == 1 ? "✅ tetiklendi (aktif)" : _d == 2 ? "🎯 hedefe ulaştı" :
+     _d == 3 ? "🛑 stop oldu" : _d == 4 ? "✖ iptal (tetikten önce stop seviyesi geçildi)" : "⌛ süresi doldu (tetiklenmedi)"
+f_fmFy(float _x) => str.tostring(_x, format.mintick)
+
+f_fmIp(int _k, int _yn, int _du, float _gir, float _stp, float _hdf, bool _gun, float _tBul) =>
+    float rr = na(_gir) or na(_stp) or _gir == _stp ? float(na) : math.abs(_hdf - _gir) / math.abs(_gir - _stp)
+    f_fmAd(_k) + " · " + (_gun ? "1 günlük" : "bu zaman dilimi") + " · " + (_yn == 1 ? "LONG (yükseliş)" : _yn == -1 ? "SHORT (düşüş)" : "yönsüz") +
+     "\nDurum: " + f_fmDuMt(_du) + " · bulundu " + str.format_time(int(_tBul), "dd.MM.yyyy HH:mm", "Europe/Istanbul") +
+     (na(_gir) ? "\nHedef üretmez: sonraki mumun kırdığı yön izlenir." :
+     "\nGiriş (tetik): " + f_fmFy(_gir) + " · fiyatın tetiğe uzaklığı " + fs1((_gir / close - 1.0) * 100.0) + "%" +
+     "\nStop: " + f_fmFy(_stp) + " (" + fs1((_stp / _gir - 1.0) * 100.0) + "%) · Hedef: " + f_fmFy(_hdf) + " (" + fs1((_hdf / _gir - 1.0) * 100.0) +
+     "%) · R/R " + (na(rr) ? "—" : f2(rr, "0.0"))) +
+     "\n" + f_fmOzet(_k) +
+     "\nPanelin karnesi (29.09.2026): " + f_fmKarne(_k) +
+     "\nNot: tanıma kuralları panelinkiyle birebir aynı değildir."
+
+// ── Çizim (yalnız son barda; önceki çizimler silinip yeniden kurulur)
+var int             fm_t0 = time          // grafiğin ilk barı: bundan önceki noktalar çizilmez
+var array<line>     fm_L  = array.new<line>()
+var array<label>    fm_B  = array.new<label>()
+var array<polyline> fm_Y  = array.new<polyline>()
+var array<linefill> fm_F  = array.new<linefill>()
+
+f_fmBir(float[] _k, int _o, bool _gun) =>
+    int   kod = int(array.get(_k, _o))
+    int   yn  = int(array.get(_k, _o + 1))
+    int   du  = int(array.get(_k, _o + 2))
+    float gir = array.get(_k, _o + 5)
+    float stp = array.get(_k, _o + 6)
+    float hdf = array.get(_k, _o + 7)
+    float sev = array.get(_k, _o + 8)
+    int   nn  = int(array.get(_k, _o + 9))
+    int   tip = int(array.get(_k, _o + 29))
+    color c   = yn == 1 ? fm_cL : yn == -1 ? fm_cS : color.gray
+    string ls = _gun ? line.style_dashed : line.style_solid
+    int   tE  = math.max(du <= 1 ? time : int(array.get(_k, _o + 4)), fm_t0)
+    float tIlk = na
+    float pSon = na
+    array<chart.point> pts = array.new<chart.point>()
+    // noktalar + adları
+    if nn > 0
+        for i = 0 to nn - 1
+            float t = array.get(_k, _o + 10 + 2 * i)
+            float p = array.get(_k, _o + 11 + 2 * i)
+            tIlk := na(tIlk) ? t : math.min(tIlk, t)
+            pSon := p
+            if t >= fm_t0
+                array.push(pts, chart.point.from_time(int(t), p))
+                string ad = fm_nok ? f_fmNokAd(kod, i) : ""
+                if ad != ""
+                    array.push(fm_B, label.new(int(t), p, ad, xloc = xloc.bar_time, yloc = yloc.price, color = color(na),
+                         style = f_fmUstNok(kod, i, yn) ? label.style_label_down : label.style_label_up, textcolor = c, size = size.tiny, force_overlay = true))
+    if array.size(pts) >= 2
+        if tip == 1
+            array<chart.point> yy = array.new<chart.point>()
+            for i = 0 to math.min(2, array.size(pts) - 1)
+                array.push(yy, array.get(pts, i))
+            array.push(fm_Y, polyline.new(yy, curved = true, closed = false, xloc = xloc.bar_time, line_color = c, line_style = ls, line_width = 2, force_overlay = true))
+            if array.size(pts) >= 4
+                array.push(fm_Y, polyline.new(array.from(array.get(pts, 2), array.get(pts, 3)), curved = false, closed = false, xloc = xloc.bar_time,
+                     line_color = c, line_style = line.style_dotted, line_width = 2, force_overlay = true))
+        else
+            array.push(fm_Y, polyline.new(pts, curved = false, closed = false, xloc = xloc.bar_time, line_color = c, line_style = ls, line_width = 2, force_overlay = true))
+    // kenarlar (takoz, üçgen, bayrak, flama) ve aradaki dolgu
+    line lnA = na
+    line lnB = na
+    for s = 0 to 1
+        int   q  = _o + 20 + 4 * s
+        float t1 = array.get(_k, q)
+        float p1 = array.get(_k, q + 1)
+        float t2 = array.get(_k, q + 2)
+        float p2 = array.get(_k, q + 3)
+        if not na(t1) and not na(p1)
+            float x1 = math.max(t1, fm_t0)
+            tIlk := na(tIlk) ? t1 : math.min(tIlk, t1)
+            line ln = line.new(int(x1), f_fmCv(t1, p1, t2, p2, x1), tE, f_fmCv(t1, p1, t2, p2, tE), xloc = xloc.bar_time,
+                 color = c, style = ls, width = 2, force_overlay = true)
+            array.push(fm_L, ln)
+            if s == 0
+                lnA := ln
+            else
+                lnB := ln
+    if not na(lnA) and not na(lnB)
+        array.push(fm_F, linefill.new(lnA, lnB, color.new(c, 88)))
+    // boyun / tetik seviyesi
+    if not na(sev)
+        int xs = int(math.max(nz(tIlk, float(tE)), fm_t0))
+        array.push(fm_L, line.new(xs, sev, tE, sev, xloc = xloc.bar_time, color = color.new(c, 20), style = line.style_dashed, width = 1, force_overlay = true))
+        array.push(fm_B, label.new(xs, sev, f_fmSevAd(kod), xloc = xloc.bar_time, color = color(na), style = label.style_label_lower_left,
+             textcolor = c, size = size.tiny, force_overlay = true))
+    // giriş / stop / hedef
+    int tR = tE + int(12 * timeframe.in_seconds(timeframe.period) * 1000)
+    if fm_plan and not na(gir) and not na(stp) and not na(hdf)
+        array.push(fm_L, line.new(tE, gir, tR, gir, xloc = xloc.bar_time, color = c, style = line.style_solid, width = 1, force_overlay = true))
+        array.push(fm_L, line.new(tE, stp, tR, stp, xloc = xloc.bar_time, color = fm_cS, style = line.style_dotted, width = 1, force_overlay = true))
+        array.push(fm_L, line.new(tE, hdf, tR, hdf, xloc = xloc.bar_time, color = fm_cL, style = line.style_dotted, width = 1, force_overlay = true))
+        array.push(fm_B, label.new(tR, hdf, "Hedef " + f_fmFy(hdf) + " (" + fs1((hdf / gir - 1.0) * 100.0) + "%)", xloc = xloc.bar_time,
+             color = color(na), style = label.style_label_left, textcolor = fm_cL, size = size.tiny, force_overlay = true))
+        array.push(fm_B, label.new(tR, stp, "Stop " + f_fmFy(stp) + " (" + fs1((stp / gir - 1.0) * 100.0) + "%)", xloc = xloc.bar_time,
+             color = color(na), style = label.style_label_left, textcolor = fm_cS, size = size.tiny, force_overlay = true))
+    // ana etiket: ad + durum; üzerine gelince ayrıntı
+    bool  mum = tip == 3
+    int   xL  = mum ? math.max(int(array.get(_k, _o + 3)), fm_t0) : tE
+    float yL  = mum ? nz(pSon, close) : na(gir) ? nz(pSon, close) : gir
+    array.push(fm_B, label.new(xL, yL, (_gun ? "1G · " : "") + f_fmAd(kod) + " " + f_fmDuIk(du), xloc = xloc.bar_time, yloc = yloc.price,
+         color = color.new(c, 10), style = mum ? (yn == -1 or yn == 0 ? label.style_label_down : label.style_label_up) : label.style_label_right,
+         textcolor = color.white, size = size.small, tooltip = f_fmIp(kod, yn, du, gir, stp, hdf, _gun, array.get(_k, _o + 3)), force_overlay = true))
+    true
+
+// Bir zaman diliminin kayıtlarından gösterilecekleri seç (seçili + bekleyen / aktif ya da yakında sonuçlanmış; en yeniler önce)
+f_fmCiz(float[] _k, bool _gun) =>
+    if not na(_k)
+        float tfms = _gun ? 86400000.0 : timeframe.in_seconds(timeframe.period) * 1000.0
+        float[] tb = array.new_float()
+        int[]   ix = array.new_int()
+        for k = 0 to 23
+            int   o  = k * FMR
+            float kd = array.get(_k, o)
+            if not na(kd)
+                if f_fmAcik(int(kd))
+                    int du = int(array.get(_k, o + 2))
+                    if du <= 1 or time - array.get(_k, o + 4) <= fm_gec * tfms
+                        array.push(tb, array.get(_k, o + 3))
+                        array.push(ix, k)
+        int adet = array.size(ix)
+        if adet > 0
+            int[] sira = array.sort_indices(tb, order.descending)
+            for j = 0 to math.min(adet, fm_max) - 1
+                f_fmBir(_k, array.get(ix, array.get(sira, j)) * FMR, _gun)
+    true
+
+if barstate.islast
+    while array.size(fm_F) > 0
+        linefill.delete(array.pop(fm_F))
+    while array.size(fm_L) > 0
+        line.delete(array.pop(fm_L))
+    while array.size(fm_B) > 0
+        label.delete(array.pop(fm_B))
+    while array.size(fm_Y) > 0
+        polyline.delete(array.pop(fm_Y))
+    if fm_on and fm_grf
+        f_fmCiz(fm_kay, false)
+    if fm_on and fm_gun and not timeframe.isdaily
+        f_fmCiz(fm_kayG, true)
